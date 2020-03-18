@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "i:\\gwatts\\Code\\irishep\\hep_tables\\.venv\\Scripts\\python.exe"
+    "python.pythonPath": "i:\\gwatts\\Code\\irishep\\hep_tables\\.venv\\Scripts\\python.exe",
+    "python.linting.flake8Enabled": true
 }
