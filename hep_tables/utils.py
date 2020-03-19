@@ -1,6 +1,6 @@
 import ast
 import logging
-from typing import Any
+from typing import Any, List
 
 from dataframe_expressions import DataFrame, ast_DataFrame, render
 from func_adl_xAOD import use_exe_servicex
@@ -9,9 +9,17 @@ from func_adl import ObjectStream
 from .hep_table import xaod_table
 
 
-def is_sequence(n: str):
+def _is_sequence(n: str):
     'Determine if the call on n is a collection or a terminal'
-    return n == 'jets'
+    return (n == 'jets') or (n == 'Jets')
+
+
+def _resolve_arg(a: ast.AST):
+    if isinstance(a, ast.Str):
+        return f'"{a.s}"'
+    if isinstance(a, ast.Num):
+        return f'"{a.value}"'
+    raise Exception("Can only deal with strings and numbers as arguments to functions")
 
 
 class _map_to_data(ast.NodeVisitor):
@@ -28,10 +36,22 @@ class _map_to_data(ast.NodeVisitor):
     def visit_Attribute(self, a: ast.Attribute):
         self.generic_visit(a)
         name = a.attr
-        if is_sequence(name):
+        if _is_sequence(name):
             self.call_chain.append(lambda a: a.SelectMany(f"lambda e: e.{name}()"))
         else:
             self.call_chain.append(lambda a: a.Select(f"lambda e: e.{name}()"))
+
+    def visit_Call(self, a: ast.Call):
+        assert isinstance(a.func, ast.Attribute), 'Function calls can only be method calls'
+        self.visit(a.func.value)
+
+        resolved_args = [_resolve_arg(arg) for arg in a.args]
+        name = a.func.attr
+        function_call = f'{name}({", ".join([str(ag) for ag in resolved_args])})'
+        if _is_sequence(name):
+            self.call_chain.append(lambda a: a.SelectMany(f"lambda e: e.{function_call}"))
+        else:
+            self.call_chain.append(lambda a: a.Select(f"lambda e: e.{function_call}"))
 
 
 def make_local(df: DataFrame) -> Any:
