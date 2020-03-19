@@ -98,3 +98,12 @@ def test_collect_xaod_jet_pts(good_transform_request, reduce_wait_time, files_ba
     make_local(seq)
     json = good_transform_request
     assert json['selection'] == "(call ResultTTree (call Select (call SelectMany (call EventDataset (list 'locads://bogus')) (lambda (list e) (call (attr e 'Jets') 'AntiKT4'))) (lambda (list e) (call (attr e 'pt')))) (list 'col1') 'treeme' 'file.root')"  # NOQA
+
+
+def test_collect_xaod_call_with_number(good_transform_request, reduce_wait_time, files_back_1):
+    'Do this with the actual call we need in ATLAS'
+    df = xaod_table(f)
+    seq = df.Jets(22.0).pt
+    make_local(seq)
+    json = good_transform_request
+    assert json['selection'] == "(call ResultTTree (call Select (call SelectMany (call EventDataset (list 'locads://bogus')) (lambda (list e) (call (attr e 'Jets') 22.0))) (lambda (list e) (call (attr e 'pt')))) (list 'col1') 'treeme' 'file.root')"  # NOQA

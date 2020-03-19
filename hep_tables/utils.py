@@ -1,6 +1,6 @@
 import ast
 import logging
-from typing import Any, List
+from typing import Any
 
 from dataframe_expressions import DataFrame, ast_DataFrame, render
 from func_adl_xAOD import use_exe_servicex
@@ -18,7 +18,7 @@ def _resolve_arg(a: ast.AST):
     if isinstance(a, ast.Str):
         return f'"{a.s}"'
     if isinstance(a, ast.Num):
-        return f'"{a.value}"'
+        return a.n
     raise Exception("Can only deal with strings and numbers as arguments to functions")
 
 
