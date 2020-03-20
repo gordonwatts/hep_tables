@@ -11,7 +11,7 @@ from .hep_table import xaod_table
 
 def _is_sequence(n: str):
     'Determine if the call on n is a collection or a terminal'
-    return (n == 'jets') or (n == 'Jets')
+    return (n == 'jets') or (n == 'Jets') or (n == 'Electrons')
 
 
 def _resolve_arg(a: ast.AST) -> str:

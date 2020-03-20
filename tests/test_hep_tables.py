@@ -122,6 +122,19 @@ def test_collect_xaod_jet_pts(good_transform_request, reduce_wait_time, files_ba
     assert json['selection'] == txt
 
 
+def test_collect_xaod_ele_pts(good_transform_request, reduce_wait_time, files_back_1):
+    'Do this with the actual call we need in ATLAS'
+    df = xaod_table(f)
+    seq = df.Electrons("Electrons").pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.Electrons('Electrons')")
+                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
 def test_collect_xaod_call_with_number(good_transform_request, reduce_wait_time, files_back_1):
     'Do this with the actual call we need in ATLAS'
     df = xaod_table(f)
