@@ -1,11 +1,14 @@
-from hep_tables import xaod_table, make_local
-from func_adl import EventDataset
+import ast
+from json import dumps, loads
 import logging
+import shutil
+from unittest import mock
+
+from func_adl import EventDataset
 import pytest
 import servicex as fe
-from unittest import mock
-import shutil
-from json import dumps, loads
+
+from hep_tables import make_local, xaod_table
 
 # For use in testing - a mock.
 f = EventDataset('locads://bogus')
@@ -77,6 +80,17 @@ def files_back_1(mocker):
     return None
 
 
+def translate_linq(expr) -> str:
+    '''
+    expr is the LINQ expression, short of the value. We return the `qastle` AST.
+    '''
+    def translate(a: ast.AST):
+        import qastle
+        return qastle.python_ast_to_text_ast(a)
+
+    return expr.value(translate)
+
+
 def test_create_base():
     _ = xaod_table(f)
 
@@ -88,7 +102,11 @@ def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
     assert a is not None
     assert len(a) == 283458
     json = good_transform_request
-    assert json['selection'] == "(call ResultTTree (call Select (call SelectMany (call EventDataset (list 'locads://bogus')) (lambda (list e) (call (attr e 'jets')))) (lambda (list e) (call (attr e 'pt')))) (list 'col1') 'treeme' 'file.root')"  # NOQA
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
 
 
 def test_collect_xaod_jet_pts(good_transform_request, reduce_wait_time, files_back_1):
@@ -97,7 +115,11 @@ def test_collect_xaod_jet_pts(good_transform_request, reduce_wait_time, files_ba
     seq = df.Jets("AntiKT4").pt
     make_local(seq)
     json = good_transform_request
-    assert json['selection'] == "(call ResultTTree (call Select (call SelectMany (call EventDataset (list 'locads://bogus')) (lambda (list e) (call (attr e 'Jets') 'AntiKT4'))) (lambda (list e) (call (attr e 'pt')))) (list 'col1') 'treeme' 'file.root')"  # NOQA
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.Jets('AntiKT4')")
+                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
 
 
 def test_collect_xaod_call_with_number(good_transform_request, reduce_wait_time, files_back_1):
@@ -106,4 +128,8 @@ def test_collect_xaod_call_with_number(good_transform_request, reduce_wait_time,
     seq = df.Jets(22.0).pt
     make_local(seq)
     json = good_transform_request
-    assert json['selection'] == "(call ResultTTree (call Select (call SelectMany (call EventDataset (list 'locads://bogus')) (lambda (list e) (call (attr e 'Jets') 22.0))) (lambda (list e) (call (attr e 'pt')))) (list 'col1') 'treeme' 'file.root')"  # NOQA
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.Jets(22.0)")
+                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
