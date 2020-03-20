@@ -100,7 +100,7 @@ def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
     seq = df.jets.pt
     a = make_local(seq)
     assert a is not None
-    assert len(a) == 283458
+    assert len(a[b'JetPt']) == 283458
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
