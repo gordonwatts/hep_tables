@@ -146,3 +146,59 @@ def test_collect_xaod_call_with_number(good_transform_request, reduce_wait_time,
                          .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
+
+
+def test_pt_div(good_transform_request, reduce_wait_time, files_back_1):
+    'Do this with the actual call we need in ATLAS'
+    df = xaod_table(f)
+    seq = df.jets.pt/1000.0
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .Select("lambda e4: e4.Select(lambda e5: e5/1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+def test_pt_mult(good_transform_request, reduce_wait_time, files_back_1):
+    'Do this with the actual call we need in ATLAS'
+    df = xaod_table(f)
+    seq = df.jets.pt*1000.0
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .Select("lambda e4: e4.Select(lambda e5: e5 * 1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+def test_pt_add(good_transform_request, reduce_wait_time, files_back_1):
+    'Do this with the actual call we need in ATLAS'
+    df = xaod_table(f)
+    seq = df.jets.pt + 1000.0
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .Select("lambda e4: e4.Select(lambda e5: e5 + 1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+def test_pt_sub(good_transform_request, reduce_wait_time, files_back_1):
+    'Do this with the actual call we need in ATLAS'
+    df = xaod_table(f)
+    seq = df.jets.pt - 1000.0
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .Select("lambda e4: e4.Select(lambda e5: e5 - 1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt

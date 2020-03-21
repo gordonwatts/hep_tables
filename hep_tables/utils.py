@@ -1,6 +1,6 @@
 import ast
 import logging
-from typing import Any, List, Type, Optional
+from typing import Any, List, Type, Optional, Dict
 
 from dataframe_expressions import DataFrame, ast_DataFrame, render
 from func_adl_xAOD import use_exe_servicex
@@ -19,7 +19,7 @@ def _resolve_arg(a: ast.AST) -> str:
         return f'"{a.s}"'
     if isinstance(a, ast.Num):
         return str(a.n)
-    raise Exception("Can only deal with strings and numbers as arguments to functions")
+    raise Exception("Can only deal with strings and numbers as terminals")
 
 
 class seq_info:
@@ -59,23 +59,40 @@ class _map_to_data(ast.NodeVisitor):
         self.dataset = df.event_source
         self.call_chain.append(seq_info(lambda a: self.dataset, xaod_table))
 
-    def append_call(self, name_of_method: str, args: Optional[List[str]]):
-        'Append a call onto the call chain that will look at this method'
-        arg_text = "" if args is None else ", ".join([str(ag) for ag in args])
-        function_call = f'{name_of_method}({arg_text})'
-        result_type = List[object] if _is_sequence(name_of_method) else object
+    def append_expression(self, expr: str, result_type: Type) -> None:
+        '''
+        Append an expression.
+
+        Arguments:
+            expr            String expression. Contains the string base_value which will be
+                            replaced with whateve the current object reference is.
+            result_type     What type of object will this yield.
+        '''
         # TODO: Proper way to deal with typeing in python when we use it for introspection.
         # THis is only working now b.c. we are doing "object" as a thing
         working_on_sequence = self.call_chain[-1].type is List[object]
         if working_on_sequence:
+            # If this is a sequence, then we will keep it a sequence. Further, if this
+            # call is going to produce a sequence, then we need to go down one level.
+            result_type = List[result_type]
+        if working_on_sequence:
             v_name = self.new_name()
             s_name = self.new_name()
-            self.call_chain.append(seq_info(lambda a: a.Select(f"lambda {v_name}: {v_name}.Select(lambda {s_name}: {s_name}.{function_call})"),
+            expr_to_call = expr.replace('base_value', s_name)
+            self.call_chain.append(seq_info(lambda a: a.Select(f"lambda {v_name}: {v_name}.Select(lambda {s_name}: {expr_to_call})"),
                                             result_type))
         else:
             v_name = self.new_name()
-            self.call_chain.append(seq_info(lambda a: a.Select(f"lambda {v_name}: {v_name}.{function_call}"),
+            expr_to_call = expr.replace('base_value', v_name)
+            self.call_chain.append(seq_info(lambda a: a.Select(f"lambda {v_name}: {expr_to_call}"),
                                             result_type))
+
+    def append_call(self, name_of_method: str, args: Optional[List[str]]) -> None:
+        'Append a call onto the call chain that will look at this method'
+        arg_text = "" if args is None else ", ".join([str(ag) for ag in args])
+        function_call = f'{name_of_method}({arg_text})'
+        result_type = List[object] if _is_sequence(name_of_method) else object
+        self.append_expression(f'base_value.{function_call}', result_type)
 
     def visit_Attribute(self, a: ast.Attribute):
         self.generic_visit(a)
@@ -89,6 +106,15 @@ class _map_to_data(ast.NodeVisitor):
         resolved_args = [_resolve_arg(arg) for arg in a.args]
         name = a.func.attr
         self.append_call(name, resolved_args)
+
+    def visit_BinOp(self, a: ast.BinOp):
+        # TODO: Should support 1.0 / j.pt as well as j.pt / 1.0
+        known_operators: Dict[Type, str] = {ast.Div: '/', ast.Sub: '-', ast.Mult: '*', ast.Add: '+'}
+        if type(a.op) not in known_operators:
+            raise Exception(f'Operator {str(type(a.op))} not known, so cannot translate.')
+        operand2 = _resolve_arg(a.right)
+        self.visit(a.left)
+        self.append_expression(f'base_value {known_operators[type(a.op)]} {operand2}', object)
 
 
 def make_local(df: DataFrame) -> Any:
