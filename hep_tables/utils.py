@@ -2,11 +2,25 @@ import ast
 import logging
 from typing import Any, List, Type, Optional, Dict
 
-from dataframe_expressions import DataFrame, ast_DataFrame, render
+from dataframe_expressions import DataFrame, ast_DataFrame, ast_Filter, render
 from func_adl_xAOD import use_exe_servicex
 from func_adl import ObjectStream
 
 from .hep_table import xaod_table
+
+# Known operators and their "text" rep.
+_known_operators: Dict[Type, str] = {
+    ast.Div: '/',
+    ast.Sub: '-',
+    ast.Mult: '*',
+    ast.Add: '+',
+    ast.Gt: '>',
+    ast.GtE: '>=',
+    ast.Lt: '<',
+    ast.LtE: '<=',
+    ast.Eq: '==',
+    ast.NotEq: '!='
+    }
 
 
 def _is_sequence(n: str):
@@ -42,11 +56,61 @@ class seq_info:
         self.type = t
 
 
+def _render_filter_expression(a: ast.AST) -> str:
+    '''
+    Given an expression that will need no filling in from other places,
+    render it to text (so that it can be parsed back again... eye roll).
+    '''
+    class render_expression(ast.NodeVisitor):
+        def __init__(self):
+            ast.NodeVisitor.__init__(self)
+            self.term_stack = []
+
+        def visit_Compare(self, a: ast.Compare):
+            assert len(a.comparators) == 1
+            assert len(a.ops) == 1
+            # Need better protection here - if visit doesn't render something
+            # even if we are deep in an expression... This will catch internal errors
+            # in a production system when someone ueses a "new" feature of python we
+            # don't have yet. As it stands, it will still cause an assertion failure, it will
+            # just potentially be far away from the place the problem actually occured.
+            self.visit(a.left)
+            left = self.term_stack.pop()
+            self.visit(a.comparators[0])
+            right = self.term_stack.pop()
+            if type(a.ops[0]) not in _known_operators:
+                raise Exception(f'Unknown operator {str(a.ops[0])} - cannot translate.')
+            op = _known_operators[type(a.ops[0])]
+            self.term_stack.append(f'({left} {op} {right})')
+
+        def visit_Name(self, a: ast.Name):
+            self.term_stack.append(a.id)
+
+        def visit_Num(self, a: ast.Num):
+            self.term_stack.append(str(a.n))
+
+        def visit_Str(self, a: ast.Str):
+            self.term_stack.append(f'"{a.s}"')
+
+    r = render_expression()
+    r.visit(a)
+    assert len(r.term_stack) == 1
+    return r.term_stack.pop()
+
+
 class _map_to_data(ast.NodeVisitor):
     def __init__(self):
-        self.dataset: xaod_table = None
+        self.dataset: Optional[xaod_table] = None
         self.call_chain: List[seq_info] = []
         self._counter = 1
+        self._seen_asts: Dict[int, str] = {}
+
+    def visit(self, a: ast.AST):
+        # This is a horrible hack that will have to be smarter when we do object
+        # to object comparisons. But we aren't trying to get that working yet.
+        # so why spend the effort?
+        ast.NodeVisitor.visit(self, a)
+        self._seen_asts[hash(str(a))] = 'base_value'
 
     def new_name(self) -> str:
         n = f'e{self._counter}'
@@ -58,6 +122,45 @@ class _map_to_data(ast.NodeVisitor):
         assert isinstance(df, xaod_table), "Can only use xaod_table dataframes in a query"
         self.dataset = df.event_source
         self.call_chain.append(seq_info(lambda a: self.dataset, xaod_table))
+
+    def visit_ast_Filter(self, a: ast_Filter):
+        self.visit(a.expr)
+        # Get any references we already know about and replace them.
+
+        class replace_known(ast.NodeTransformer):
+            def __init__(self, known: Dict[int, str]):
+                ast.NodeTransformer.__init__(self)
+                self.known = known
+                pass
+
+            def visit(self, a: ast.AST):
+                h = hash(str(a))
+                if h in self.known:
+                    return ast.Name(self.known[h])
+
+                return ast.NodeTransformer.visit(self, a)
+
+        replaced_a = replace_known(self._seen_asts).visit(a.filter)
+        filter_expression = _render_filter_expression(replaced_a)
+        self.append_filter(filter_expression)
+
+    def append_filter(self, expr: str):
+        'Put in a Where statement'
+        result_type = self.call_chain[-1].type
+        working_on_sequence = result_type is List[object]
+        if working_on_sequence:
+            v_name = self.new_name()
+            s_name = self.new_name()
+            expr_to_call = expr.replace('base_value', s_name)
+            self.call_chain \
+                .append(seq_info(lambda a: a.Select(f"lambda {v_name}: {v_name}"
+                                                    f".Where(lambda {s_name}: {expr_to_call})"),
+                                 result_type))
+        else:
+            v_name = self.new_name()
+            expr_to_call = expr.replace('base_value', v_name)
+            self.call_chain.append(seq_info(lambda a: a.Where(f"lambda {v_name}: {expr_to_call}"),
+                                            result_type))
 
     def append_expression(self, expr: str, result_type: Type) -> None:
         '''
@@ -79,8 +182,10 @@ class _map_to_data(ast.NodeVisitor):
             v_name = self.new_name()
             s_name = self.new_name()
             expr_to_call = expr.replace('base_value', s_name)
-            self.call_chain.append(seq_info(lambda a: a.Select(f"lambda {v_name}: {v_name}.Select(lambda {s_name}: {expr_to_call})"),
-                                            result_type))
+            self.call_chain \
+                .append(seq_info(lambda a: a.Select(f"lambda {v_name}: {v_name}"
+                                                    f".Select(lambda {s_name}: {expr_to_call})"),
+                                 result_type))
         else:
             v_name = self.new_name()
             expr_to_call = expr.replace('base_value', v_name)
@@ -109,12 +214,11 @@ class _map_to_data(ast.NodeVisitor):
 
     def visit_BinOp(self, a: ast.BinOp):
         # TODO: Should support 1.0 / j.pt as well as j.pt / 1.0
-        known_operators: Dict[Type, str] = {ast.Div: '/', ast.Sub: '-', ast.Mult: '*', ast.Add: '+'}
-        if type(a.op) not in known_operators:
+        if type(a.op) not in _known_operators:
             raise Exception(f'Operator {str(type(a.op))} not known, so cannot translate.')
         operand2 = _resolve_arg(a.right)
         self.visit(a.left)
-        self.append_expression(f'base_value {known_operators[type(a.op)]} {operand2}', object)
+        self.append_expression(f'base_value {_known_operators[type(a.op)]} {operand2}', object)
 
 
 def make_local(df: DataFrame) -> Any:
@@ -122,11 +226,9 @@ def make_local(df: DataFrame) -> Any:
     Given a dataframe, take its data and render it locally.
     '''
     # First step, get the expression, filter, etc., from the thing.
-    expression, filter = render(df)
+    expression = render(df)
     lg = logging.getLogger(__name__)
     lg.info(f'make_local expression: {ast.dump(expression)}')
-    lg.info("make_local filter: None" if filter is None
-            else f'make_local filter: {ast.dump(filter)}')
 
     # Lets render the code to access the data that has been
     # requested.
@@ -134,9 +236,10 @@ def make_local(df: DataFrame) -> Any:
     mapper.visit(expression)
 
     assert mapper.dataset is not None
-    result: ObjectStream = None
+    result: Optional[ObjectStream] = None
     for c in mapper.call_chain:
-        result = c.functor(result)  # type: ObjectStream
+        result = c.functor(result)  # type: Optional[ObjectStream]
+    assert result is not None
     result = result.AsAwkwardArray(['col1'])
 
     return result.value(use_exe_servicex)
