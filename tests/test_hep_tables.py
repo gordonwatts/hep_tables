@@ -17,6 +17,12 @@ f = EventDataset('locads://bogus')
 logging.basicConfig(level=logging.NOTSET)
 
 
+@pytest.fixture(autouse=True)
+def reset_var_counter():
+    import hep_tables
+    hep_tables.utils.reset_new_var_counter()
+
+
 @pytest.fixture(scope="module")
 def reduce_wait_time():
     old_value = fe.servicex.servicex_status_poll_time
@@ -104,7 +110,7 @@ def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -117,7 +123,7 @@ def test_collect_xaod_jet_pts(good_transform_request, reduce_wait_time, files_ba
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.Jets('AntiKT4')")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -130,7 +136,7 @@ def test_collect_xaod_ele_pts(good_transform_request, reduce_wait_time, files_ba
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.Electrons('Electrons')")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -143,7 +149,7 @@ def test_collect_xaod_call_with_number(good_transform_request, reduce_wait_time,
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.Jets(22.0)")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+                         .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -156,8 +162,8 @@ def test_pt_div(good_transform_request, reduce_wait_time, files_back_1):
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Select(lambda e5: e5/1000.0)")
+                         .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
+                         .Select("lambda e5: e5.Select(lambda e3: e3/1000.0)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -170,8 +176,8 @@ def test_pt_mult(good_transform_request, reduce_wait_time, files_back_1):
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Select(lambda e5: e5 * 1000.0)")
+                         .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
+                         .Select("lambda e5: e5.Select(lambda e3: e3 * 1000.0)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -184,8 +190,8 @@ def test_pt_add(good_transform_request, reduce_wait_time, files_back_1):
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Select(lambda e5: e5 + 1000.0)")
+                         .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
+                         .Select("lambda e5: e5.Select(lambda e3: e3 + 1000.0)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -198,8 +204,8 @@ def test_pt_sub(good_transform_request, reduce_wait_time, files_back_1):
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Select(lambda e5: e5 - 1000.0)")
+                         .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
+                         .Select("lambda e5: e5.Select(lambda e3: e3 - 1000.0)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -212,8 +218,8 @@ def test_jet_pt_filter_pts_gt(good_transform_request, reduce_wait_time, files_ba
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Where(lambda e5: e5 > 30.0)")
+                         .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+                         .Select("lambda e4: e4.Select(lambda e3: e3 > 30.0).Where(lambda e5: e5)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -224,11 +230,12 @@ def test_jet_pt_filter_pts_ge(good_transform_request, reduce_wait_time, files_ba
     seq = df.jets.pt[df.jets.pt >= 30.0]
     make_local(seq)
     json = good_transform_request
-    txt = translate_linq(f
-                         .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Where(lambda e5: e5 >= 30.0)")
-                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+        .Select("lambda e4: e4.Select(lambda e3: e3 >= 30.0).Where(lambda e5: e5)")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
 
@@ -240,8 +247,8 @@ def test_jet_pt_filter_pts_lt(good_transform_request, reduce_wait_time, files_ba
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Where(lambda e5: e5 < 30.0)")
+                         .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+                         .Select("lambda e4: e4.Select(lambda e3: e3 < 30.0).Where(lambda e5: e5)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -252,11 +259,12 @@ def test_jet_pt_filter_pts_le(good_transform_request, reduce_wait_time, files_ba
     seq = df.jets.pt[df.jets.pt <= 30.0]
     make_local(seq)
     json = good_transform_request
-    txt = translate_linq(f
-                         .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Where(lambda e5: e5 <= 30.0)")
-                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+        .Select("lambda e4: e4.Select(lambda e3: e3 <= 30.0).Where(lambda e5: e5)")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
 
@@ -266,11 +274,12 @@ def test_jet_pt_filter_pts_eq(good_transform_request, reduce_wait_time, files_ba
     seq = df.jets.pt[df.jets.pt == 30.0]
     make_local(seq)
     json = good_transform_request
-    txt = translate_linq(f
-                         .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Where(lambda e5: e5 == 30.0)")
-                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+        .Select("lambda e4: e4.Select(lambda e3: e3 == 30.0).Where(lambda e5: e5)")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
 
@@ -280,9 +289,32 @@ def test_jet_pt_filter_pts_ne(good_transform_request, reduce_wait_time, files_ba
     seq = df.jets.pt[df.jets.pt != 30.0]
     make_local(seq)
     json = good_transform_request
-    txt = translate_linq(f
-                         .Select("lambda e1: e1.jets()")
-                         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
-                         .Select("lambda e4: e4.Where(lambda e5: e5 != 30.0)")
-                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+        .Select("lambda e4: e4.Select(lambda e3: e3 != 30.0).Where(lambda e5: e5)")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
+
+
+def test_filter_jet_objects(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets[df.jets.pt > 30].pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e4: e4.Select(lambda e2: e2.pt())."
+                "Select(lambda e3: e3 > 30).Where(lambda e5: e5)")
+        .Select("lambda e7: e7.Select(lambda e6: e6.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+# def test_filter_on_single_object():
+#     df = xaod_table(f)
+#     seq = df[df.met > 30.0].jets.pt
+#     # make_local(seq)
+#     assert False
