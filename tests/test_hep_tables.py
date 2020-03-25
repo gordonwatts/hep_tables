@@ -224,6 +224,21 @@ def test_jet_pt_filter_pts_gt(good_transform_request, reduce_wait_time, files_ba
     assert json['selection'] == txt
 
 
+def test_filter_and_divide(good_transform_request, reduce_wait_time, files_back_1):
+    'Do this with the actual call we need in ATLAS'
+    df = xaod_table(f)
+    seq = df.jets.pt[df.jets.pt > 30.0]/1000.0
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e7: e7.Select(lambda e2: e2.pt())")
+                         .Select("lambda e4: e4.Select(lambda e3: e3 > 30.0).Where(lambda e5: e5)")
+                         .Select("lambda e8: e8.Select(lambda e6: e6 / 1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
 def test_jet_pt_filter_pts_ge(good_transform_request, reduce_wait_time, files_back_1):
     'Do this with the actual call we need in ATLAS'
     df = xaod_table(f)

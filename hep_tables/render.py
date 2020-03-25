@@ -90,8 +90,7 @@ class _map_to_data(ast.NodeVisitor):
     def visit_BinOp(self, a: ast.BinOp):
         # TODO: Should support 1.0 / j.pt as well as j.pt / 1.0
         r = _render_expression(self.sequence, a)
-        for s in r:
-            self.statements.append(s)
+        self.statements = self.statements + r
 
     def append_call(self, a: ast.AST, name_of_method: str, args: Optional[List[str]]) -> None:
         'Append a call onto the call chain that will look at this method'
@@ -181,22 +180,33 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) -> List[sta
             'A string should be pushed onto the stack'
             self.term_stack.append(f'"{a.s}"')
 
-        def visit_Attribute(self, a: ast.Attribute):
+        def process_with_mapper(self, a: ast.AST):
             '''
-            Attributes are calls or references - so we need to use the other reducer to
-            understand them
+            Use the main reducer to parse this ast.
             '''
             mapper = _map_to_data(self.sequence)
             mapper.visit(a)
             if len(mapper.statements) > 0:
-                for s in mapper.statements:
-                    self.statements.append(s)
+                self.statements = self.statements + mapper.statements
                 self.sequence = self.statements[-1]
 
             # The stream is now the term we want to use. In order to do this we'll now have
             # to deal with a sequence reference. This is the main sequence, so we want to leave
             # that as the term.
             self.term_stack.append("main_sequence")
+
+        def visit_Attribute(self, a: ast.Attribute):
+            '''
+            Attributes are calls or references - so we need to use the other reducer to
+            understand them
+            '''
+            self.process_with_mapper(a)
+
+        def visit_ast_Filter(self, a: ast_Filter):
+            '''
+            Filters need the full processing power
+            '''
+            self.process_with_mapper(a)
 
     r = render_expression(current_sequence)
     r.visit(a)
