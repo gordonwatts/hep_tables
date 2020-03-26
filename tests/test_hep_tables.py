@@ -20,7 +20,10 @@ logging.basicConfig(level=logging.NOTSET)
 @pytest.fixture(autouse=True)
 def reset_var_counter():
     import hep_tables
+    # Always start from zero
     hep_tables.utils.reset_new_var_counter()
+    # This is the col name in our dummy data
+    hep_tables.local.default_col_name = b'JetPt'
 
 
 @pytest.fixture(scope="module")
@@ -106,7 +109,7 @@ def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
     seq = df.jets.pt
     a = make_local(seq)
     assert a is not None
-    assert len(a[b'JetPt']) == 283458
+    assert len(a) == 283458
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")

@@ -10,6 +10,9 @@ from .render import _map_to_data
 from .statements import statement_df
 from .utils import _find_dataframes
 
+# This is used only when testing is going on.
+default_col_name = b'col1'
+
 
 def make_local(df: DataFrame) -> Any:
     '''
@@ -43,4 +46,4 @@ def make_local(df: DataFrame) -> Any:
     for seq in mapper.statements:
         result = seq.apply(result)
 
-    return result.AsAwkwardArray(['col1']).value(use_exe_servicex)
+    return result.AsAwkwardArray(['col1']).value(use_exe_servicex)[default_col_name]
