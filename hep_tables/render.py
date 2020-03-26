@@ -3,7 +3,7 @@ from typing import List, Type, Optional, Dict
 
 from dataframe_expressions import ast_DataFrame, ast_Filter
 
-from .statements import statement_base, statement_select, statement_unwrap_list
+from .statements import statement_base, statement_select, statement_unwrap_list, statement_where
 from .utils import new_var_name
 
 
@@ -49,7 +49,7 @@ class _map_to_data(ast.NodeVisitor):
         # 1. object (implied sequence, one item per event):
         #       d.Where(lambda e: e > 10)
         # 2. List[object] (explicit sequence, one list per event):
-        #       d.Select(lambda e: e.Select(labmda ep: ep > 10).Where(lambda f: f))
+        #       d.Select(lambda e: e.Where(labmda ep: ep > 10))
         if self.sequence.rep_type is List[object]:
             # Since this guy is a sequence, we have to turn it into not-a sequence for processing.
             filter_sequence = _render_expression(statement_unwrap_list(self.sequence._ast,
@@ -60,10 +60,8 @@ class _map_to_data(ast.NodeVisitor):
             var_name = new_var_name()
             stem = var_name
             for s in filter_sequence:
-                stem = s.apply_as_text(stem)
-            var_name_check = new_var_name()
-            expr = f'{stem}.Where(lambda {var_name_check}: {var_name_check})'
-            st = statement_select(a, self.sequence.rep_type, var_name, expr, False)
+                stem = s.apply_as_function(stem)
+            st = statement_where(a, self.sequence.rep_type, var_name, stem, True)
             self.statements.append(st)
             self.sequence = st
         else:
