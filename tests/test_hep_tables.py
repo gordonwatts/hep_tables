@@ -369,36 +369,6 @@ def test_count_of_values(good_transform_request, reduce_wait_time, files_back_1)
     assert json['selection'] == txt
 
 
-# def test_count_in_simple_filter(good_transform_request, reduce_wait_time, files_back_1):
-#     df = xaod_table(f)
-#     seq = df.jets.pt[df.jets.pt.Count() == 2]
-#     make_local(seq)
-#     json = good_transform_request
-#     txt = translate_linq(
-#         f
-#         .Select("lambda e1: e1.jets()")
-#         .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
-#         .Where("lambda e5: e5.Count() == 2")
-#         .AsROOTTTree("file.root", "treeme", ['col1']))
-#     assert json['selection'] == txt
-
-
-# def test_count_in_called_filter(good_transform_request, reduce_wait_time, files_back_1):
-#  Commented out b.c. we are trying to filter at the event level, which is not making sense
-#  here. The result is not correct here and is more complex.
-#     df = xaod_table(f)
-#     seq = df.jets[df.jets.pt.Count() == 2].pt
-#     make_local(seq)
-#     json = good_transform_request
-#     txt = translate_linq(
-#         f
-#         .Select("lambda e1: e1.jets()")
-#         .Where("lambda e5: e5.Select(lambda e6: e6.pt()).Count() == 2")
-#         .Select("lambda e8: e8.Select(lambda e7: e7.pt())")
-#         .AsROOTTTree("file.root", "treeme", ['col1']))
-#     assert json['selection'] == txt
-
-
 def test_count_at_eventLevel(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df[df.jets.Count() == 2].jets.pt
@@ -446,3 +416,33 @@ def test_count_at_eventLevel(good_transform_request, reduce_wait_time, files_bac
 #     seq = df[df.met > 30.0].jets.pt
 #     # make_local(seq)
 #     assert False
+
+
+# def test_count_in_simple_filter(good_transform_request, reduce_wait_time, files_back_1):
+#     df = xaod_table(f)
+#     seq = df.jets.pt[df.jets.pt.Count() == 2]
+#     make_local(seq)
+#     json = good_transform_request
+#     txt = translate_linq(
+#         f
+#         .Select("lambda e1: e1.jets()")
+#         .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+#         .Where("lambda e5: e5.Count() == 2")
+#         .AsROOTTTree("file.root", "treeme", ['col1']))
+#     assert json['selection'] == txt
+
+
+# def test_count_in_called_filter(good_transform_request, reduce_wait_time, files_back_1):
+#  Commented out b.c. we are trying to filter at the event level, which is not making sense
+#  here. The result is not correct here and is more complex.
+#     df = xaod_table(f)
+#     seq = df.jets[df.jets.pt.Count() == 2].pt
+#     make_local(seq)
+#     json = good_transform_request
+#     txt = translate_linq(
+#         f
+#         .Select("lambda e1: e1.jets()")
+#         .Where("lambda e5: e5.Select(lambda e6: e6.pt()).Count() == 2")
+#         .Select("lambda e8: e8.Select(lambda e7: e7.pt())")
+#         .AsROOTTTree("file.root", "treeme", ['col1']))
+#     assert json['selection'] == txt
