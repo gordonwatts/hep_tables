@@ -1,5 +1,5 @@
 import ast
-from typing import List, Type, Optional, Dict
+from typing import List, Type, Optional, Dict, Tuple
 
 from dataframe_expressions import ast_DataFrame, ast_Filter
 
@@ -55,18 +55,24 @@ class _map_to_data(ast.NodeVisitor):
             filter_sequence = _render_expression(statement_unwrap_list(self.sequence._ast,
                                                                        self.sequence.rep_type),
                                                  a.filter)
+            act_on_sequence = True
+            # filter_sequence = _render_expression(self.sequence,
+            #                                      a.filter)
             # Build the sequence as a series of text strings.
-            assert len(filter_sequence) > 0
-            var_name = new_var_name()
-            stem = var_name
-            for s in filter_sequence:
-                stem = s.apply_as_function(stem)
-            st = statement_where(a, self.sequence.rep_type, var_name, stem, True)
-            self.statements.append(st)
-            self.sequence = st
         else:
-            assert False, "not implemented yet"
-        pass
+            filter_sequence = _render_expression(self.sequence, a.filter)
+            act_on_sequence = False
+
+        assert len(filter_sequence) > 0
+        var_name = new_var_name()
+        stem = var_name
+        for s in filter_sequence:
+            stem = s.apply_as_function(stem)
+        st = statement_where(a, self.sequence.rep_type,
+                             var_name, stem,
+                             act_on_sequence)
+        self.statements.append(st)
+        self.sequence = st
 
     def visit_Attribute(self, a: ast.Attribute):
         # Get the stream up to the base of our expression.
@@ -100,10 +106,20 @@ class _map_to_data(ast.NodeVisitor):
 
         # The result type of the sequence after we are done. Will depend on what we are currently
         # working on
-        result_type = List[object] if _is_sequence(name_of_method) else object
+        input_type, result_type = _type_system(name_of_method)
         working_on_sequence = self.sequence.rep_type is List[object]
         if working_on_sequence:
-            result_type = List[result_type]
+            if input_type is not List[object]:
+                # Input is a single object, and we are applying it to a list.
+                # Heuristics: we do a map operation.
+                result_type = List[result_type]
+            else:
+                # Input is a List, thus we eat this guy as if it was a single
+                # object. This might be something like Count or Sum
+                working_on_sequence = False
+        else:
+            if input_type is List[object]:
+                assert False, 'Do not know how to turn a single object into a list'                
 
         # Finally, build the map statement, and then update the current sequence.
         select = statement_select(a, result_type, iterator_name, expr, working_on_sequence)
@@ -237,6 +253,25 @@ def _resolve_arg(a: ast.AST) -> str:
     raise Exception("Can only deal with strings and numbers as terminals")
 
 
-def _is_sequence(n: str):
-    'Determine if the call on n is a collection or a terminal'
-    return (n == 'jets') or (n == 'Jets') or (n == 'Electrons')
+_known_types = {
+    'jets': (object, List[object]),
+    'Jets': (object, List[object]),
+    'Electrons': (object, List[object]),
+    'Count': (List[object], object)
+}
+
+
+def _type_system(n: str) -> Tuple[Type, Type]:
+    '''
+    Determine the type of method/prop that is being accessed. This
+    is using heuristics.
+    TODO: This needs to be robust! Big can of worms
+
+    Args:
+        n           Name of the method that we are looking at. No context is given, just name.
+
+    Returns:
+        arg_type    What does it operate on (list or object)?
+        rtn_type    What does it return
+    '''
+    return _known_types[n] if n in _known_types else (object, object)

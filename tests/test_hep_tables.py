@@ -341,6 +341,106 @@ def test_binop_in_filter(good_transform_request, reduce_wait_time, files_back_1)
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
+
+def test_count_of_objects(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.Count()
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e2: e2.Count()")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+def test_count_of_values(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.pt.Count()
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
+        .Select("lambda e3: e3.Count()")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+# def test_count_in_simple_filter(good_transform_request, reduce_wait_time, files_back_1):
+#     df = xaod_table(f)
+#     seq = df.jets.pt[df.jets.pt.Count() == 2]
+#     make_local(seq)
+#     json = good_transform_request
+#     txt = translate_linq(
+#         f
+#         .Select("lambda e1: e1.jets()")
+#         .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+#         .Where("lambda e5: e5.Count() == 2")
+#         .AsROOTTTree("file.root", "treeme", ['col1']))
+#     assert json['selection'] == txt
+
+
+# def test_count_in_called_filter(good_transform_request, reduce_wait_time, files_back_1):
+#  Commented out b.c. we are trying to filter at the event level, which is not making sense
+#  here. The result is not correct here and is more complex.
+#     df = xaod_table(f)
+#     seq = df.jets[df.jets.pt.Count() == 2].pt
+#     make_local(seq)
+#     json = good_transform_request
+#     txt = translate_linq(
+#         f
+#         .Select("lambda e1: e1.jets()")
+#         .Where("lambda e5: e5.Select(lambda e6: e6.pt()).Count() == 2")
+#         .Select("lambda e8: e8.Select(lambda e7: e7.pt())")
+#         .AsROOTTTree("file.root", "treeme", ['col1']))
+#     assert json['selection'] == txt
+
+
+def test_count_at_eventLevel(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df[df.jets.Count() == 2].jets.pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Where("lambda e4: e4.jets().Count() == 2")
+        .Select("lambda e5: e5.jets()")
+        .Select("lambda e7: e7.Select(lambda e6: e6.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+# def test_count_in_nested_filter(good_transform_request, reduce_wait_time, files_back_1):
+#     df = xaod_table(f)
+#     seq1 = df.jets[df.jets.pt > 20000.0]
+#     seq2 = seq1.jets[seq1.Count() == 2].pt
+#     make_local(seq2)
+#     json = good_transform_request
+#     txt = translate_linq(
+#         f
+#         .Select("lambda e1: e1.jets()")
+#         .Where("lambda e8: e8.Select(lambda e9: e9.pt() > 20000.0)")
+#         .Where("lambda e8: e8.Count() == 2")
+#         .Select("lambda e2: e2.Select(lambda e3: e3.pt())")
+#         .AsROOTTTree("file.root", "treeme", ['col1']))
+#     assert json['selection'] == txt
+
+
+# def test_math_func_in_filter(good_transform_request, reduce_wait_time, files_back_1):
+#     df = xaod_table(f)
+#     seq = df.jets[abs(df.jets.eta) < 2.5].pt
+#     make_local(seq)
+#     json = good_transform_request
+#     txt = translate_linq(
+#         f
+#         .Select("lambda e1: e1.jets()")
+#         .Select("lambda e7: e7.Where(lambda e5: abs(e5.eta()) < 2.5)")
+#         .Select("lambda e8: e8.Select(lambda e6: e6.pt())")
+#         .AsROOTTTree("file.root", "treeme", ['col1']))
+#     assert json['selection'] == txt
 # def test_filter_on_single_object():
 #     df = xaod_table(f)
 #     seq = df[df.met > 30.0].jets.pt

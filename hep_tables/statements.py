@@ -79,7 +79,13 @@ class statement_select(statement_base):
         return f'{var_name}.Select({lambda_text})'
 
     def apply_as_function(self, var_name: str) -> str:
-        return self._func.replace(self._iterator, var_name)
+        if self._act_on_sequence:
+            inner_var = new_var_name()
+            inner_expr = self._func.replace(self._iterator, inner_var)
+            expr = f'{var_name}.Select(lambda {inner_var}: {inner_expr})'
+            return expr
+        else:
+            return self._func.replace(self._iterator, var_name)
 
 
 class statement_where(statement_base):
