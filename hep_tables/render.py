@@ -23,10 +23,6 @@ class _map_to_data(ast.NodeVisitor):
         '''
         self.sequence = base_sequence
         self.statements: List[statement_base] = []
-        # self.dataset: Optional[xaod_table] = None
-        # self.call_chain: List[seq_info] = []
-        # self._counter = 1
-        # self._seen_asts: Dict[int, str] = {}
 
     def visit(self, a: ast.AST):
         '''
@@ -56,9 +52,6 @@ class _map_to_data(ast.NodeVisitor):
                                                                        self.sequence.rep_type),
                                                  a.filter)
             act_on_sequence = True
-            # filter_sequence = _render_expression(self.sequence,
-            #                                      a.filter)
-            # Build the sequence as a series of text strings.
         else:
             filter_sequence = _render_expression(self.sequence, a.filter)
             act_on_sequence = False
@@ -84,12 +77,19 @@ class _map_to_data(ast.NodeVisitor):
 
     def visit_Call(self, a: ast.Call):
         assert isinstance(a.func, ast.Attribute), 'Function calls can only be method calls'
-        self.visit(a.func.value)
+        # Math function calls are treated like expressions
+        if a.func.attr in _known_simple_math_functions:
+            r = _render_expression(self.sequence, a)
+            self.statements = self.statements + r
+        else:
+            # We are now accessing a column or collection off a event or other collection.
+            # The LINQ, functional, way of doing this is by going down a level.
+            self.visit(a.func.value)
 
-        # TODO: resovle arg should be a call to the expression thing!
-        resolved_args = [_resolve_arg(arg) for arg in a.args]
-        name = a.func.attr
-        self.append_call(a, name, resolved_args)
+            # TODO: resovle arg should be a call to the expression thing!
+            resolved_args = [_resolve_arg(arg) for arg in a.args]
+            name = a.func.attr
+            self.append_call(a, name, resolved_args)
 
     def visit_BinOp(self, a: ast.BinOp):
         # TODO: Should support 1.0 / j.pt as well as j.pt / 1.0
@@ -119,7 +119,7 @@ class _map_to_data(ast.NodeVisitor):
                 working_on_sequence = False
         else:
             if input_type is List[object]:
-                assert False, 'Do not know how to turn a single object into a list'                
+                assert False, 'Do not know how to turn a single object into a list'
 
         # Finally, build the map statement, and then update the current sequence.
         select = statement_select(a, result_type, iterator_name, expr, working_on_sequence)
@@ -222,6 +222,29 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) -> List[sta
             '''
             self.process_with_mapper(a)
 
+        def visit_Call(self, a: ast.Call):
+            '''
+            Deal with math functions.
+            '''
+            assert isinstance(a.func, ast.Attribute)
+            if a.func.attr not in _known_simple_math_functions:
+                self.process_with_mapper(a)
+            else:
+                assert len(a.args) == 0
+
+                self.visit(a.func.value)
+                v = self.term_stack.pop()
+
+                if v != 'main_sequence':
+                    self.term_stack.append(f'{_known_simple_math_functions[a.func.attr]}({v})')
+                else:
+                    var_name = new_var_name()
+                    expr = f'({_known_simple_math_functions[a.func.attr]}({var_name}))'
+                    self.statements.append(
+                        statement_select(a, object, var_name, expr,
+                                         self.sequence.rep_type is List[object]))
+                    self.term_stack.append('main_sequence')
+
     r = render_expression(current_sequence)
     r.visit(a)
     assert len(r.term_stack) == 1
@@ -275,3 +298,9 @@ def _type_system(n: str) -> Tuple[Type, Type]:
         rtn_type    What does it return
     '''
     return _known_types[n] if n in _known_types else (object, object)
+
+
+# List of math functions we translate into something similar in the LINQ code.
+_known_simple_math_functions = {
+    'abs': 'abs'
+}

@@ -118,6 +118,33 @@ def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
     assert json['selection'] == txt
 
 
+def test_abs_of_data(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = abs(df.jets.pt)
+    a = make_local(seq)
+    assert a is not None
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
+                         .Select("lambda e5: e5.Select(lambda e3: abs(e3))")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+def test_abs_of_top_leveldata(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = abs(df.met)
+    a = make_local(seq)
+    assert a is not None
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.met()")
+                         .Select("lambda e2: abs(e2)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
 def test_collect_xaod_jet_pts(good_transform_request, reduce_wait_time, files_back_1):
     'Do this with the actual call we need in ATLAS'
     df = xaod_table(f)
