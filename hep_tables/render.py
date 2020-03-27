@@ -48,13 +48,14 @@ class _map_to_data(ast.NodeVisitor):
         #       d.Select(lambda e: e.Where(labmda ep: ep > 10))
         if self.sequence.rep_type is List[object]:
             # Since this guy is a sequence, we have to turn it into not-a sequence for processing.
-            filter_sequence = _render_expression(statement_unwrap_list(self.sequence._ast,
-                                                                       self.sequence.rep_type),
-                                                 a.filter)
+            filter_sequence, trm = _render_expression(
+                statement_unwrap_list(self.sequence._ast, self.sequence.rep_type), a.filter)
             act_on_sequence = True
+            assert trm == 'main_sequence', 'Unexpected term type for filter expression'
         else:
-            filter_sequence = _render_expression(self.sequence, a.filter)
+            filter_sequence, trm = _render_expression(self.sequence, a.filter)
             act_on_sequence = False
+            assert trm == 'main_sequence', 'Unexpected term type for filter expression'
 
         assert len(filter_sequence) > 0
         var_name = new_var_name()
@@ -79,7 +80,7 @@ class _map_to_data(ast.NodeVisitor):
         assert isinstance(a.func, ast.Attribute), 'Function calls can only be method calls'
         # Math function calls are treated like expressions
         if a.func.attr in _known_simple_math_functions:
-            r = _render_expression(self.sequence, a)
+            r, _ = _render_expression(self.sequence, a)
             self.statements = self.statements + r
         else:
             # We are now accessing a column or collection off a event or other collection.
@@ -93,7 +94,7 @@ class _map_to_data(ast.NodeVisitor):
 
     def visit_BinOp(self, a: ast.BinOp):
         # TODO: Should support 1.0 / j.pt as well as j.pt / 1.0
-        r = _render_expression(self.sequence, a)
+        r, _ = _render_expression(self.sequence, a)
         self.statements = self.statements + r
 
     def append_call(self, a: ast.AST, name_of_method: str, args: Optional[List[str]]) -> None:
@@ -127,7 +128,8 @@ class _map_to_data(ast.NodeVisitor):
         self.sequence = select
 
 
-def _render_expression(current_sequence: statement_base, a: ast.AST) -> List[statement_base]:
+def _render_expression(current_sequence: statement_base, a: ast.AST) \
+        -> Tuple[List[statement_base], str]:
     '''
     Render an expression. If the expression contains linq selections stuff, then we will
     have to go back and render those as well by making a call back into _map.
@@ -139,6 +141,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) -> List[sta
     Returns:
         statements              A list of statements to be appended or referenced from the current
                                 sequence.
+        term                    'main_sequence' or a string term representing the expression
 
     '''
     class render_expression(ast.NodeVisitor):
@@ -152,11 +155,11 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) -> List[sta
             '''
             Create the statements needed for a binary operator
             '''
-            self.visit(a_left)
-            left = self.term_stack.pop()
+            s_left, left = _render_expression(self.sequence, a_left)
+            self.statements += s_left
 
-            self.visit(a_right)
-            right = self.term_stack.pop()
+            s_right, right = _render_expression(self.sequence, a_right)
+            self.statements += s_right
 
             # Is the compare between two "terms" we know, or a sequence?
             op = _known_operators[type(operator)]
@@ -165,8 +168,9 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) -> List[sta
             else:
                 var_name = new_var_name()
                 expr = f'({var_name} {op} {right})'
+                rep_type = s_left[-1].rep_type if len(s_left) > 0 else self.sequence.rep_type
                 self.statements.append(statement_select(a, bool, var_name, expr,
-                                                        self.sequence.rep_type is List[object]))
+                                                        rep_type is List[object]))
                 self.term_stack.append('main_sequence')
 
         def visit_Compare(self, a: ast.Compare):
@@ -185,6 +189,32 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) -> List[sta
         def visit_BinOp(self, a: ast.BinOp):
             '*, /, +, and -'
             self.binary_op_statement(a.op, a.left, a.right)
+
+        def visit_BoolOp(self, a: ast.BoolOp):
+            'and or'
+            def process_term(r: render_expression, a: ast.AST):
+                s_left, left = _render_expression(r.sequence, a)
+                # r.statements += s_left
+                return s_left, left
+
+            assert len(a.values) == 2
+            terms = [process_term(self, a) for a in a.values]
+            assert [t[1] for t in terms].count('main_sequence') == len(terms)
+
+            var_name = new_var_name()
+            l_stem = var_name
+            for s in terms[0][0]:
+                l_stem = s.apply_as_function(l_stem)
+
+            r_stem = var_name
+            for s in terms[1][0]:
+                r_stem = s.apply_as_function(r_stem)
+
+            expr = f'({l_stem}) {_known_operators[type(a.op)]} ({r_stem})'
+            st = statement_select(a, bool, var_name, expr, False)
+            self.statements.append(st)
+            self.sequence = st
+            self.term_stack.append('main_sequence')
 
         def visit_Num(self, a: ast.Num):
             'A number term should be pushed into the stack'
@@ -248,8 +278,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) -> List[sta
     r = render_expression(current_sequence)
     r.visit(a)
     assert len(r.term_stack) == 1
-    assert r.term_stack[0] == 'main_sequence'
-    return r.statements
+    return r.statements, r.term_stack[0]
 
 
 # Known operators and their "text" rep.
@@ -263,7 +292,8 @@ _known_operators: Dict[Type, str] = {
     ast.Lt: '<',
     ast.LtE: '<=',
     ast.Eq: '==',
-    ast.NotEq: '!='
+    ast.NotEq: '!=',
+    ast.And: 'and',
     }
 
 

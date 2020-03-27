@@ -355,6 +355,34 @@ def test_filter_jet_objects(good_transform_request, reduce_wait_time, files_back
     assert json['selection'] == txt
 
 
+def test_filter_and(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets[(df.jets.pt > 30.0) & (df.jets.pt > 40.0)].pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e9: e9.Where(lambda e7: (e7.pt() > 30.0) and (e7.pt() > 40.0))")
+        .Select("lambda e10: e10.Select(lambda e8: e8.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
+def test_filter_and_abs(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets[(df.jets.pt > 30.0) & (abs(df.jets.eta) < 2.5)].pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e10: e10.Where(lambda e8: (e8.pt() > 30.0) and (abs(e8.eta()) < 2.5))")
+        .Select("lambda e11: e11.Select(lambda e9: e9.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
 def test_binop_in_filter(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df.jets[(df.jets.pt/1000.0) > 30].pt

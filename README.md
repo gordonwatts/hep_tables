@@ -10,3 +10,6 @@
  ## Some Notes
 
  - We have split the parser into two - one looks for things having to do with LINQ processes, and the other deals with things connected with expressions ("/" or ">" operations). We have to be able to call back and forth between them at the moment. Which might not be ideal. There may be a way to combine them. The problem is that the expression processor has to forward everything to the other and vice versa. Which means you have to touch both. It works, but it will be a little bit of a mess going forward, I suspect.
+
+ - How should we consider parsing these things - there are math expressions and sequence expressions. We should look carefully at the DAG and make sure the two are well seperated.
+ 
