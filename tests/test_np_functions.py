@@ -5,6 +5,20 @@ from .utils_for_testing import translate_linq
 from typing import Tuple
 
 
+def test_numpy_abs(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    import numpy as np
+    seq = np.abs(df.met)
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.met()")
+        .Select("lambda e2: abs(e2)")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json['selection'] == txt
+
+
 def test_numpy_histogram(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = histogram(df.met)
