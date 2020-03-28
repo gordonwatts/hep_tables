@@ -1,4 +1,6 @@
 import ast
+
+from func_adl.ObjectStream import ObjectStream
 from hep_tables.hep_table import xaod_table
 import logging
 from typing import Any
@@ -46,4 +48,7 @@ def make_local(df: DataFrame) -> Any:
     for seq in mapper.statements:
         result = seq.apply(result)
 
-    return result.AsAwkwardArray(['col1']).value(use_exe_servicex)[default_col_name]
+    if isinstance(result, ObjectStream):
+        return result.AsAwkwardArray(['col1']).value(use_exe_servicex)[default_col_name]
+    else:
+        return result

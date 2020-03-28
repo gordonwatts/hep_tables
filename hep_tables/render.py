@@ -1,10 +1,13 @@
 import ast
-from typing import List, Type, Optional, Dict, Tuple
+from typing import Dict, List, Optional, Tuple, Type
 
 from dataframe_expressions import ast_DataFrame, ast_Filter
+from func_adl_xAOD import use_exe_servicex
 
-from .statements import statement_base, statement_select, statement_unwrap_list, statement_where
-from .utils import new_var_name
+from .statements import (
+    statement_base, statement_df, statement_select, statement_unwrap_list,
+    statement_where, statement_constant)
+from .utils import new_var_name, to_args_from_keywords
 
 
 class _map_to_data(ast.NodeVisitor):
@@ -76,12 +79,57 @@ class _map_to_data(ast.NodeVisitor):
         name = a.attr
         self.append_call(a, name, None)
 
+    def render_locally(self, v: ast.AST):
+        '''
+        Render v locally as data
+        '''
+        from .utils import _find_dataframes
+        from .local import default_col_name
+        from func_adl import ObjectStream
+
+        base_ast_df = _find_dataframes(v)
+
+        # TODO: THis is the same code as in make_local - perhaps????
+        mapper = _map_to_data(statement_df(base_ast_df))
+        mapper.visit(v)
+
+        result = base_ast_df.dataframe.event_source
+        for seq in mapper.statements:
+            result = seq.apply(result)
+
+        if isinstance(result, ObjectStream):
+            return result.AsAwkwardArray(['col1']).value(use_exe_servicex)[default_col_name]
+        else:
+            return result
+
+    def visit_call_histogram(self, value: ast.AST, args: List[ast.AST],
+                             keywords: List[ast.keyword], a: ast.Call):
+        '''
+        Generate a histogram. We can't do this in the abstract, unfortunately,
+        as we have to get the data and apply the numpy.histogram at this upper level.
+        '''
+        assert len(args) == 0, 'Do not know how to process extra args for numpy.histogram'
+        data = self.render_locally(value)
+        if hasattr(data, 'flatten'):
+            data = getattr(data, 'flatten')()
+        import numpy as np
+        kwargs = to_args_from_keywords(keywords)
+        result = np.histogram(data, bins=kwargs['bins'],
+                              range=kwargs['range'],
+                              density=kwargs['density'])
+        st = statement_constant(a, result, type(result))
+        self.statements.append(st)
+        self.sequence = st
+
     def visit_Call(self, a: ast.Call):
         assert isinstance(a.func, ast.Attribute), 'Function calls can only be method calls'
         # Math function calls are treated like expressions
         if a.func.attr in _known_simple_math_functions:
             r, _ = _render_expression(self.sequence, a)
             self.statements = self.statements + r
+        elif hasattr(self, f'visit_call_{a.func.attr}'):
+            m = getattr(self, f'visit_call_{a.func.attr}')
+            m(a.func.value, a.args, a.keywords, a)
         else:
             # We are now accessing a column or collection off a event or other collection.
             # The LINQ, functional, way of doing this is by going down a level.

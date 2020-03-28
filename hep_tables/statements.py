@@ -14,7 +14,7 @@ class statement_base:
         self._ast = ast_rep
         self.rep_type = rep_type
 
-    def apply(self, stream: ObjectStream) -> ObjectStream:
+    def apply(self, stream: object) -> object:
         assert False, 'This should be overridden'
 
     def apply_as_text(self, var_name: str) -> str:
@@ -56,8 +56,9 @@ class statement_select(statement_base):
         self._func = function_text
         self._act_on_sequence = is_sequence_of_objects
 
-    def apply(self, seq: ObjectStream) -> ObjectStream:
+    def apply(self, seq: object) -> ObjectStream:
         # Build the lambda
+        assert isinstance(seq, ObjectStream), 'Internal error'
         if self._act_on_sequence:
             outter_var_name = new_var_name()
             lambda_text = f'lambda {outter_var_name}: {outter_var_name}' \
@@ -102,8 +103,9 @@ class statement_where(statement_base):
         self._func = function_text
         self._act_on_sequence = is_sequence_of_objects
 
-    def apply(self, seq: ObjectStream) -> ObjectStream:
+    def apply(self, seq: object) -> ObjectStream:
         # Build the lambda
+        assert isinstance(seq, ObjectStream), 'Internal error'
         if self._act_on_sequence:
             outter_var_name = new_var_name()
             lambda_text = f'lambda {outter_var_name}: {outter_var_name}' \
@@ -114,21 +116,14 @@ class statement_where(statement_base):
             return seq.Where(lambda_text)
 
 
-class seq_info:
+class statement_constant(statement_base):
     '''
-    Contains the info for the sequence at its current state:
+    A bit of a weird one - returns  a constant that should be used
+    directly as input for the next thing.
+    '''
+    def __init__(self, ast_rep: ast.AST, value: object, rep_type: Type):
+        statement_base.__init__(self, ast_rep, rep_type)
+        self._value = value
 
-        - The element that will move things forward
-        - The type. The type is the element of the sequence. So the top level event is an
-          Event object, the jets in the event are a list of jets... so think of the type as
-          one level down, like the template type of a monad.
-    '''
-    def __init__(self, functor_linq_phrase, t: Type):
-        '''
-        Arguments:
-            functor_linq_phrase         The functor you apply to a LINQ expression to drive this
-                                        bit forward
-            t                           The type
-        '''
-        self.functor = functor_linq_phrase
-        self.type = t
+    def apply(self, stream: object) -> object:
+        return self._value

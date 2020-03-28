@@ -13,3 +13,4 @@
 
  - How should we consider parsing these things - there are math expressions and sequence expressions. We should look carefully at the DAG and make sure the two are well seperated.
  
+ - When a user uses a new `histogram` function (something that comes from outside) there should be an automatic way to let the local render stuff know that a backend needs to be called for it. Right now that is hardwired into the code. And one could think of splitting some of this - as different backends could implement the same thing - so one frontend (like histogram) and then all the backends could implement it.

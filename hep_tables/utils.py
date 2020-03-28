@@ -1,5 +1,5 @@
 import ast
-from typing import List
+from typing import List, Dict, Optional
 
 from dataframe_expressions import ast_DataFrame
 
@@ -38,3 +38,23 @@ def new_var_name():
     v = f'e{_var_name_counter}'
     _var_name_counter = _var_name_counter + 1
     return v
+
+
+def to_ast(o: object) -> ast.AST:
+    '''
+    Convert an object to an ast
+    '''
+    r = ast.parse(str(o)).body[0]
+    assert isinstance(r, ast.Expr)
+    return r.value  # NOQA
+
+
+def to_object(a: ast.AST) -> Optional[object]:
+    return ast.literal_eval(a)
+
+
+def to_args_from_keywords(kws: List[ast.keyword]) -> Dict[str, Optional[object]]:
+    '''
+    Given keywords return a dict of those ast's converted to something useful.
+    '''
+    return {k.arg: to_object(k.value) for k in kws if isinstance(k.arg, str)}
