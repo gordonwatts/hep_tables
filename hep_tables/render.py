@@ -1,7 +1,8 @@
 import ast
 from typing import Dict, List, Optional, Tuple, Type
 
-from dataframe_expressions import ast_DataFrame, ast_Filter
+from dataframe_expressions import (ast_DataFrame, ast_Filter, ast_Callable,
+                                   render_callable, render_context)
 from func_adl_xAOD import use_exe_servicex
 
 from .statements import (
@@ -17,7 +18,7 @@ class _map_to_data(ast.NodeVisitor):
     Select) or filtering (with Where). As such, we maintain something that tells us what
     the current sequence is.
     '''
-    def __init__(self, base_sequence: statement_base):
+    def __init__(self, base_sequence: statement_base, context: render_context):
         '''
         Create a mapper
 
@@ -26,6 +27,7 @@ class _map_to_data(ast.NodeVisitor):
         '''
         self.sequence = base_sequence
         self.statements: List[statement_base] = []
+        self.context = context
 
     def visit(self, a: ast.AST):
         '''
@@ -52,11 +54,12 @@ class _map_to_data(ast.NodeVisitor):
         if self.sequence.rep_type is List[object]:
             # Since this guy is a sequence, we have to turn it into not-a sequence for processing.
             filter_sequence, trm = _render_expression(
-                statement_unwrap_list(self.sequence._ast, self.sequence.rep_type), a.filter)
+                statement_unwrap_list(self.sequence._ast, self.sequence.rep_type), a.filter,
+                self.context)
             act_on_sequence = True
             assert trm == 'main_sequence', 'Unexpected term type for filter expression'
         else:
-            filter_sequence, trm = _render_expression(self.sequence, a.filter)
+            filter_sequence, trm = _render_expression(self.sequence, a.filter, self.context)
             act_on_sequence = False
             assert trm == 'main_sequence', 'Unexpected term type for filter expression'
 
@@ -90,7 +93,7 @@ class _map_to_data(ast.NodeVisitor):
         base_ast_df = _find_dataframes(v)
 
         # TODO: THis is the same code as in make_local - perhaps????
-        mapper = _map_to_data(statement_df(base_ast_df))
+        mapper = _map_to_data(statement_df(base_ast_df), self.context)
         mapper.visit(v)
 
         result = base_ast_df.dataframe.event_source
@@ -121,11 +124,25 @@ class _map_to_data(ast.NodeVisitor):
         self.statements.append(st)
         self.sequence = st
 
+    def visit_call_map(self, value: ast.AST, args: List[ast.AST],
+                       keywords: List[ast.keyword], a: ast.Call):
+        '''
+        We are going to map a lambda function onto this sequence.
+        '''
+        assert len(args) == 1
+        callable = args[0]
+        assert isinstance(callable, ast_Callable)
+
+        # We have to render the callable at this point.
+        self.visit(value)
+        expr = render_callable(callable, self.context, value)
+        self.visit(expr)
+
     def visit_Call(self, a: ast.Call):
         assert isinstance(a.func, ast.Attribute), 'Function calls can only be method calls'
         # Math function calls are treated like expressions
         if a.func.attr in _known_simple_math_functions:
-            r, _ = _render_expression(self.sequence, a)
+            r, _ = _render_expression(self.sequence, a, self.context)
             self.statements = self.statements + r
         elif hasattr(self, f'visit_call_{a.func.attr}'):
             m = getattr(self, f'visit_call_{a.func.attr}')
@@ -142,7 +159,7 @@ class _map_to_data(ast.NodeVisitor):
 
     def visit_BinOp(self, a: ast.BinOp):
         # TODO: Should support 1.0 / j.pt as well as j.pt / 1.0
-        r, _ = _render_expression(self.sequence, a)
+        r, _ = _render_expression(self.sequence, a, self.context)
         self.statements = self.statements + r
 
     def append_call(self, a: ast.AST, name_of_method: str, args: Optional[List[str]]) -> None:
@@ -176,7 +193,7 @@ class _map_to_data(ast.NodeVisitor):
         self.sequence = select
 
 
-def _render_expression(current_sequence: statement_base, a: ast.AST) \
+def _render_expression(current_sequence: statement_base, a: ast.AST, context: render_context) \
         -> Tuple[List[statement_base], str]:
     '''
     Render an expression. If the expression contains linq selections stuff, then we will
@@ -185,6 +202,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) \
     Arguments:
         current_sequence        The current active sequence that we are looking at
         a                       The expression ast to be parsed
+        context                 Rendering context - used if we have to re-run a lambda or similar
 
     Returns:
         statements              A list of statements to be appended or referenced from the current
@@ -193,20 +211,21 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) \
 
     '''
     class render_expression(ast.NodeVisitor):
-        def __init__(self, current_sequence: statement_base):
+        def __init__(self, current_sequence: statement_base, context: render_context):
             ast.NodeVisitor.__init__(self)
             self.sequence = current_sequence
             self.statements = []
             self.term_stack = []
+            self.context = context
 
         def binary_op_statement(self, operator: ast.AST, a_left: ast.AST, a_right: ast.AST):
             '''
             Create the statements needed for a binary operator
             '''
-            s_left, left = _render_expression(self.sequence, a_left)
+            s_left, left = _render_expression(self.sequence, a_left, self.context)
             self.statements += s_left
 
-            s_right, right = _render_expression(self.sequence, a_right)
+            s_right, right = _render_expression(self.sequence, a_right, self.context)
             self.statements += s_right
 
             # Is the compare between two "terms" we know, or a sequence?
@@ -241,7 +260,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) \
         def visit_BoolOp(self, a: ast.BoolOp):
             'and or'
             def process_term(r: render_expression, a: ast.AST):
-                s_left, left = _render_expression(r.sequence, a)
+                s_left, left = _render_expression(r.sequence, a, self.context)
                 # r.statements += s_left
                 return s_left, left
 
@@ -276,7 +295,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) \
             '''
             Use the main reducer to parse this ast.
             '''
-            mapper = _map_to_data(self.sequence)
+            mapper = _map_to_data(self.sequence, self.context)
             mapper.visit(a)
             if len(mapper.statements) > 0:
                 self.statements = self.statements + mapper.statements
@@ -323,7 +342,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST) \
                                          self.sequence.rep_type is List[object]))
                     self.term_stack.append('main_sequence')
 
-    r = render_expression(current_sequence)
+    r = render_expression(current_sequence, context)
     r.visit(a)
     assert len(r.term_stack) == 1
     return r.statements, r.term_stack[0]

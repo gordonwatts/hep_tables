@@ -27,7 +27,7 @@ def make_local(df: DataFrame) -> Any:
         Values      A Jagged array, or other objects, depending on the query
     '''
     # First step, get the expression, filter, etc., from the thing.
-    expression = render(df)
+    expression, context = render(df)
     lg = logging.getLogger(__name__)
     lg.info(f'make_local expression: {ast.dump(expression)}')
 
@@ -37,7 +37,7 @@ def make_local(df: DataFrame) -> Any:
 
     # Lets render the code to access the data that has been
     # requested.
-    mapper = _map_to_data(base_statement)
+    mapper = _map_to_data(base_statement, context)
     mapper.visit(expression)
 
     # Render the expression to a LINQ expression.

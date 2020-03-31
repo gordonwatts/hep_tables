@@ -13,7 +13,7 @@ f = EventDataset('locads://bogus')
 def test_find_dataframes():
     df = xaod_table(f)
     seq = df.jets.pt
-    expr = render(seq)
+    expr, _ = render(seq)
 
     found_df = _find_dataframes(expr)
     assert isinstance(found_df, ast_DataFrame)
@@ -23,7 +23,7 @@ def test_find_dataframes():
 def test_find_nested_dataframes():
     df = xaod_table(f)
     seq = df.jets[df.jets.pt > 30].pt
-    expr = render(seq)
+    expr, _ = render(seq)
 
     found_df = _find_dataframes(expr)
     assert isinstance(found_df, ast_DataFrame)
