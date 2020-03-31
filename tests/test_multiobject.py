@@ -24,8 +24,8 @@ def test_simple_capture_and_replace(good_transform_request, reduce_wait_time, fi
     json = good_transform_request
     txt = translate_linq(
         f
-        .Select("lambda: e1: e1.jets()")
-        .Select("lambda e3: e3.Select(lambda e2: f).met()")
+        .Select("lambda: e1: (e1, e1.jets())")
+        .Select("lambda e3: e3[1].Select(lambda e2: e3[0]).met()")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -37,7 +37,7 @@ def test_object_compare(good_transform_request, reduce_wait_time, files_back_1):
     json = good_transform_request
     txt = translate_linq(
         f
-        .Select("lambda e1: e1.jets()")
-        .Select("lambda e2: f.Electrons().Select(e3: e3.DeltaR(e2))")
+        .Select("lambda e1: (e1.Electrons(), e1.jets())")
+        .Select("lambda e2: e2[0].Select(e3: e3.DeltaR(e2[1]))")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
