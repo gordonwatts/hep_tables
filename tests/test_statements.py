@@ -38,6 +38,26 @@ def test_monad_add_same():
     assert m.render('e1', 'e1.jets()') == '(e1.jets(), e1.eles())'
 
 
+def test_monad_follow():
+    m = _monad_manager()
+    index = m.carry_monad_forward(1)
+    assert index == 1
+    assert m.render('e19', 'e19.jets()') == '(e19[0].jets(), e19[1])'
+
+
+def test_monad_prev_statement():
+    m = _monad_manager()
+    m.prev_statement_is_monad()
+    assert m.render('e1', 'e1.jets()') == 'e1[0].jets()'
+
+
+def test_monad_prev_statement_with_monad():
+    m = _monad_manager()
+    m.add_monad('e3', 'e3[1].eles()')
+    m.prev_statement_is_monad()
+    assert m.render('e1', 'e1.jets()') == '(e1[0].jets(), e1[1].eles())'
+
+
 def test_statement_df_add_monad():
     d = xaod_table(f)
     s = statement_df(ast_DataFrame(d))

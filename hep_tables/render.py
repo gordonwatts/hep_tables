@@ -8,7 +8,14 @@ from func_adl_xAOD import use_exe_servicex
 from .statements import (
     statement_base, statement_df, statement_select, statement_unwrap_list,
     statement_where, statement_constant)
-from .utils import new_var_name, to_args_from_keywords
+from .utils import new_var_name, to_args_from_keywords, _find_root_expr, _ast_replace
+
+
+class _ast_VarRef(ast.AST):
+    'An internal AST when we want to replace an ast with a variable reference inline'
+    def __init__(self, name: str):
+        self.name = name
+        self._fields = ()
 
 
 class _map_to_data(ast.NodeVisitor):
@@ -28,6 +35,7 @@ class _map_to_data(ast.NodeVisitor):
         self.sequence = base_sequence
         self.statements: List[statement_base] = []
         self.context = context
+        self.base_sequence = base_sequence
 
     def visit(self, a: ast.AST):
         '''
@@ -124,6 +132,26 @@ class _map_to_data(ast.NodeVisitor):
         self.statements.append(st)
         self.sequence = st
 
+    def carry_monad_forward(self, a: ast.AST) -> int:
+        '''
+        Go back in our sequence of statements to find the sequence `a`. Once found, bring it
+        forward as a monad for later use.
+        '''
+        index = 0 if self.base_sequence._ast is a else None
+        if index is None:
+            possible = [(i, s) for i, s in enumerate(self.statements) if s._ast is a]
+            assert len(possible) != 0, f'Internal error, unable capture {ast.dump(a)}'
+            index = possible[0][0] + 1
+
+        # Add the monad, make make sure it makes it all the way to the statement we need here.
+        assert len(self.statements) > index, 'Internal error - no way to carry monad forward'
+        m_name = new_var_name()
+        m_index = self.statements[index].add_monad(m_name, m_name)
+        for s in self.statements[index + 1:]:
+            m_index = s.carry_monad_forward(m_index)
+
+        return m_index
+
     def visit_call_map(self, value: ast.AST, args: List[ast.AST],
                        keywords: List[ast.keyword], a: ast.Call):
         '''
@@ -135,8 +163,81 @@ class _map_to_data(ast.NodeVisitor):
 
         # We have to render the callable at this point.
         self.visit(value)
-        expr = render_callable(callable, self.context, value)
-        self.visit(expr)
+        expr = render_callable(callable, self.context, callable.dataframe)
+
+        # In that expr there may be captured variables, or references to things that
+        # are not in `value`. If that is the case, that means we need to add a monad to fetch
+        # them from earlier in the process.
+        root_expr = _find_root_expr(expr, self.sequence._ast)
+        if root_expr is self.sequence._ast:
+            self.visit(expr)
+        else:
+            monad_index = self.carry_monad_forward(root_expr)
+            monad_var = new_var_name()
+
+            expr = _ast_replace(expr, root_expr, _ast_VarRef(f'{monad_var}[{monad_index}]'))
+
+            if self.sequence.rep_type is List[object]:
+                # Since this guy is a sequence, we have to turn it into not-a sequence for
+                # processing.
+                func_sequence, trm = _render_expression(
+                    statement_unwrap_list(self.sequence._ast, self.sequence.rep_type), expr,
+                    self.context)
+                act_on_sequence = True
+            else:
+                func_sequence, trm = _render_expression(self.sequence, expr, self.context)
+                act_on_sequence = False
+            assert trm == 'main_sequence' or len(func_sequence) == 0, \
+                'Unexpected term type for filter expression'
+
+            # Build the select statement as an internal function.
+
+            select_var = new_var_name()
+            if len(func_sequence) == 0:
+                internal_func = trm
+            else:
+                internal_func = select_var
+                for s in func_sequence:
+                    internal_func = s.apply_as_function(internal_func)
+
+            st = statement_select(a, List[object],
+                                  select_var, internal_func,
+                                  act_on_sequence)
+            st.prev_statement_is_monad()
+            self.statements.append(st)
+            self.sequence = st
+
+            pass
+
+            # Below code is form above, if we repeat it, it should be pulled into
+            # a method.
+            # # How we do the filter depends on what we are looking at
+            # # 1. object (implied sequence, one item per event):
+            # #       d.Where(lambda e: e > 10)
+            # # 2. List[object] (explicit sequence, one list per event):
+            # #       d.Select(lambda e: e.Where(labmda ep: ep > 10))
+            # if self.sequence.rep_type is List[object]:
+            #     # Since this guy is a sequence, we have to turn it into not-a sequence for processing.
+            #     filter_sequence, trm = _render_expression(
+            #         statement_unwrap_list(self.sequence._ast, self.sequence.rep_type), a.filter,
+            #         self.context)
+            #     act_on_sequence = True
+            #     assert trm == 'main_sequence', 'Unexpected term type for filter expression'
+            # else:
+            #     filter_sequence, trm = _render_expression(self.sequence, a.filter, self.context)
+            #     act_on_sequence = False
+            #     assert trm == 'main_sequence', 'Unexpected term type for filter expression'
+
+            # assert len(filter_sequence) > 0
+            # var_name = new_var_name()
+            # stem = var_name
+            # for s in filter_sequence:
+            #     stem = s.apply_as_function(stem)
+            # st = statement_where(a, self.sequence.rep_type,
+            #                     var_name, stem,
+            #                     act_on_sequence)
+            # self.statements.append(st)
+            # self.sequence = st
 
     def visit_Call(self, a: ast.Call):
         assert isinstance(a.func, ast.Attribute), 'Function calls can only be method calls'
@@ -290,6 +391,9 @@ def _render_expression(current_sequence: statement_base, a: ast.AST, context: re
         def visit_Str(self, a: ast.Str):
             'A string should be pushed onto the stack'
             self.term_stack.append(f'"{a.s}"')
+
+        def visit__ast_VarRef(self, a: _ast_VarRef):
+            self.term_stack.append(a.name)
 
         def process_with_mapper(self, a: ast.AST):
             '''

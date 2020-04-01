@@ -58,3 +58,57 @@ def to_args_from_keywords(kws: List[ast.keyword]) -> Dict[str, Optional[object]]
     Given keywords return a dict of those ast's converted to something useful.
     '''
     return {k.arg: to_object(k.value) for k in kws if isinstance(k.arg, str)}
+
+
+def _find_root_expr(expr: ast.AST, a: ast.AST) -> ast.AST:
+    '''
+    Look to see if we can find the root expression for this ast. It will either be `a` or
+    it will be an `ast_DataFrame` - return whichever one it is.
+
+    Arguments:
+        expr            Expression to find a root
+        a               Root
+
+    Result:
+        expr            First hit in the standard ast.NodeVistor algorithm that is
+                        either the a object or an instance of type `ast_DataFrame`.
+    '''
+    class root_finder(ast.NodeVisitor):
+        def __init__(self, possible_root: ast.AST):
+            ast.NodeVisitor.__init__(self)
+            self._possible = possible_root
+            self.found: Optional[ast.AST] = None
+
+        def visit(self, a: ast.AST):
+            if a is self._possible:
+                self.found = a
+            elif isinstance(a, ast_DataFrame):
+                self.found = a
+            else:
+                ast.NodeVisitor.visit(self, a)
+
+    r = root_finder(a)
+    r.visit(expr)
+    assert r.found is not None, 'Internal coding error - every expr should have a root'
+    return r.found
+
+
+def _ast_replace(expression: ast.AST, source: ast.AST, dest: ast.AST) -> ast.AST:
+    '''
+    Scan the tree looking for `source` and replace it with `dest`. No other checking is done.
+    '''
+
+    class replace_it(ast.NodeTransformer):
+        def __init__(self, source: ast.AST, dest: ast.AST):
+            ast.NodeTransformer.__init__(self)
+            self._source = source
+            self._dest = dest
+
+        def visit(self, a: ast.AST):
+            if a is self._source:
+                return self._dest
+
+            return ast.NodeTransformer.visit(self, a)
+
+    v = replace_it(source, dest)
+    return v.visit(expression)

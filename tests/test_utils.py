@@ -1,10 +1,11 @@
-from dataframe_expressions.render import render
-
-from func_adl import EventDataset
+import ast
 
 from dataframe_expressions import ast_DataFrame
+from dataframe_expressions.render import render
+from func_adl import EventDataset
+
 from hep_tables import xaod_table
-from hep_tables.utils import _find_dataframes
+from hep_tables.utils import _find_dataframes, _find_root_expr
 
 # For use in testing - a mock.
 f = EventDataset('locads://bogus')
@@ -28,6 +29,38 @@ def test_find_nested_dataframes():
     found_df = _find_dataframes(expr)
     assert isinstance(found_df, ast_DataFrame)
     assert found_df.dataframe is df
+
+
+def test_find_root_ast_df_nested():
+    df = xaod_table(f)
+    a = ast_DataFrame(df)
+
+    attr = ast.Attribute(value=a, attr='jets', ctx=ast.Load())
+
+    r = _find_root_expr(attr, ast.Num(n=10, ctx=ast.Load()))
+    assert r is not None
+    assert r is a
+
+
+def test_find_root_ast_df_simple():
+    df = xaod_table(f)
+    a = ast_DataFrame(df)
+
+    r = _find_root_expr(a, ast.Num(n=10, ctx=ast.Load()))
+    assert r is not None
+    assert r is a
+
+
+def test_find_root_ast():
+    df = xaod_table(f)
+    a = ast_DataFrame(df)
+
+    attr = ast.Attribute(value=a, attr='jets', ctx=ast.Load())
+    attr1 = ast.Attribute(value=attr, attr='dude', ctx=ast.Load())
+
+    r = _find_root_expr(attr1, attr)
+    assert r is not None
+    assert r is attr
 
 
 # def test_fail_to_find_two_dataframes():

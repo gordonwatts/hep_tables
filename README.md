@@ -14,3 +14,5 @@
  - How should we consider parsing these things - there are math expressions and sequence expressions. We should look carefully at the DAG and make sure the two are well seperated.
  
  - When a user uses a new `histogram` function (something that comes from outside) there should be an automatic way to let the local render stuff know that a backend needs to be called for it. Right now that is hardwired into the code. And one could think of splitting some of this - as different backends could implement the same thing - so one frontend (like histogram) and then all the backends could implement it.
+
+ - It is pretty clear that we should bring every single loop item forward as part of a tuple, just do it. That way if we need them, they are there, and we don't have to have this complex structure to go back and access them at a later time. Code will be much simpler. And the rendering code is smart enough not to try to render things that aren't needed (at least, in the xAOD backend).

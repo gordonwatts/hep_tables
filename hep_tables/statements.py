@@ -14,8 +14,9 @@ class _monad_manager:
     '''
     def __init__(self):
         self._monads = []
+        self._previous_statement_monad = False
 
-    def add_monad(self, var_name: str, monad: str):
+    def add_monad(self, var_name: str, monad: str) -> int:
         '''
         Track a new monad
 
@@ -38,6 +39,11 @@ class _monad_manager:
 
     def render(self, var_name: str, main_func: str):
         '''Carry along the monads'''
+        var_name_replacement = var_name
+        if self._previous_statement_monad:
+            var_name_replacement = F'{var_name}[0]'
+            main_func = main_func.replace(var_name, var_name_replacement)
+
         if len(self._monads) == 0:
             return main_func
 
@@ -45,6 +51,30 @@ class _monad_manager:
 
         interior = ', '.join([main_func] + re_based)
         return f'({interior})'
+
+    def carry_monad_forward(self, index: int):
+        '''
+        The previous statement is a tuple, containing a monad. We want to pass it down a statement.
+
+        Arguments:
+            index           Index in the previous tuple that we want to foward
+
+        Returns:
+            index           Index in this statement where this monad can be found
+        '''
+        assert index != 0, 'Internal error - never should pass main sequence through as monad'
+        # Mark ourselves as a monad, man!
+        self.prev_statement_is_monad()
+
+        tv = new_var_name()
+        return self.add_monad(tv, f'{tv}[{index}]')
+
+    def prev_statement_is_monad(self):
+        '''
+        If the previous statement is a monad, then we will make sure the base access occurs with
+        an index of zero.
+        '''
+        self._previous_statement_monad = True
 
 
 class statement_base:
