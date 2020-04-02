@@ -63,6 +63,31 @@ def test_find_root_ast():
     assert r is attr
 
 
+def test_find_root_in_function():
+    df = xaod_table(f)
+    a = ast_DataFrame(df)
+
+    attr = ast.Attribute(value=a, attr='jets', ctx=ast.Load())
+    call = ast.Call(func=ast.Name(id='sin'), args=[attr], keywords=None)
+
+    r = _find_root_expr(call, attr)
+    assert r is attr
+
+
+def test_find_root_arg_not_right():
+    df = xaod_table(f)
+    a = ast_DataFrame(df)
+
+    # df.ele.deltar(df.jets), with df.jets as the arg.
+
+    jets_attr = ast.Attribute(value=a, attr='jets', ctx=ast.Load())
+    eles_attr = ast.Attribute(value=a, attr='eles', ctx=ast.Load())
+
+    call = ast.Call(func=eles_attr, args=[jets_attr], keywords=None)
+
+    r = _find_root_expr(call, jets_attr)
+    assert r is a
+
 # def test_fail_to_find_two_dataframes():
 #     df1 = xaod_table(f)
 #     f2 = EventDataset('locads://bogusss')

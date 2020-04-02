@@ -60,18 +60,28 @@ def to_args_from_keywords(kws: List[ast.keyword]) -> Dict[str, Optional[object]]
     return {k.arg: to_object(k.value) for k in kws if isinstance(k.arg, str)}
 
 
-def _find_root_expr(expr: ast.AST, a: ast.AST) -> ast.AST:
+def _find_root_expr(expr: ast.AST, possible_root: ast.AST) -> ast.AST:
     '''
     Look to see if we can find the root expression for this ast. It will either be `a` or
     it will be an `ast_DataFrame` - return whichever one it is.
 
     Arguments:
         expr            Expression to find a root
-        a               Root
+        possible_root   Root
 
     Result:
         expr            First hit in the standard ast.NodeVistor algorithm that is
                         either the a object or an instance of type `ast_DataFrame`.
+
+    ## Notes:
+
+    Logic is a bit subtle. Say that `possible_root` is df.jets.
+
+        df.jets.pt                  --> df.jets
+        df.eles.pt                  --> df
+        sin(df.jets.pt)             --> df.jets
+        df.eles.DeltaR(df.jets)     --> df
+
     '''
     class root_finder(ast.NodeVisitor):
         def __init__(self, possible_root: ast.AST):
@@ -81,13 +91,14 @@ def _find_root_expr(expr: ast.AST, a: ast.AST) -> ast.AST:
 
         def visit(self, a: ast.AST):
             if a is self._possible:
-                self.found = a
+                if self.found is None:
+                    self.found = a
             elif isinstance(a, ast_DataFrame):
                 self.found = a
             else:
                 ast.NodeVisitor.visit(self, a)
 
-    r = root_finder(a)
+    r = root_finder(possible_root)
     r.visit(expr)
     assert r.found is not None, 'Internal coding error - every expr should have a root'
     return r.found
