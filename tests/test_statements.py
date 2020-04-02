@@ -58,6 +58,12 @@ def test_monad_prev_statement_with_monad():
     assert m.render('e1', 'e1.jets()') == '(e1[0].jets(), e1[1].eles())'
 
 
+def test_monad_reference_prev():
+    m = _monad_manager()
+    m.prev_statement_is_monad()
+    assert m.render('e1', 'e1.jets(<monad-ref>[1])') == 'e1[0].jets(e1[1])'
+
+
 def test_statement_df_add_monad():
     d = xaod_table(f)
     s = statement_df(ast_DataFrame(d))
@@ -84,6 +90,28 @@ def test_where_obj_apply_seq(object_stream):
 
     w.apply(object_stream)
     object_stream.Select.assert_called_once_with('lambda e1: e1.Where(lambda eb: eb > 10.0)')
+
+
+def test_where_obj_apply_notseq_prev_monad(object_stream):
+    a = ast.Num(n=10)
+    rep_type = List[int]
+
+    w = statement_where(a, rep_type, 'eb', 'eb > 10.0', False)
+    w.prev_statement_is_monad()
+
+    w.apply(object_stream)
+    object_stream.Where.assert_called_once_with('lambda eb: eb[0] > 10.0')
+
+
+def test_where_obj_apply_seq_prev_monad(object_stream):
+    a = ast.Num(n=10)
+    rep_type = List[int]
+
+    w = statement_where(a, rep_type, 'eb', 'eb > 10.0', True)
+    w.prev_statement_is_monad()
+
+    w.apply(object_stream)
+    object_stream.Select.assert_called_once_with('lambda e1: e1[0].Where(lambda eb: eb > 10.0)')
 
 
 def test_where_obj_add_monad_noseq(object_stream):
@@ -131,6 +159,28 @@ def test_select_obj_apply_seq(object_stream):
     object_stream.Select.assert_called_once_with('lambda e1: e1.Select(lambda eb: eb.pt())')
 
 
+def test_select_obj_apply_notseq_prev_monad(object_stream):
+    a = ast.Num(n=10)
+    rep_type = List[int]
+
+    w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
+    w.prev_statement_is_monad()
+
+    w.apply(object_stream)
+    object_stream.Select.assert_called_once_with('lambda eb: eb[0].pt()')
+
+
+def test_select_obj_apply_seq_prev_monad(object_stream):
+    a = ast.Num(n=10)
+    rep_type = List[int]
+
+    w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
+    w.prev_statement_is_monad()
+
+    w.apply(object_stream)
+    object_stream.Select.assert_called_once_with('lambda e1: e1[0].Select(lambda eb: eb.pt())')
+
+
 def test_select_obj_apply_monad_notseq(object_stream):
     a = ast.Num(n=10)
     rep_type = List[int]
@@ -174,6 +224,28 @@ def test_select_obj_apply_txt_seq():
     assert r == 'e5.Select(lambda e1: e1.Select(lambda eb: eb.pt()))'
 
 
+def test_select_obj_apply_txt_notseq_prev_monad():
+    a = ast.Num(n=10)
+    rep_type = List[int]
+
+    w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
+    w.prev_statement_is_monad()
+
+    r = w.apply_as_text('e5')
+    assert r == 'e5.Select(lambda eb: eb[0].pt())'
+
+
+def test_select_obj_apply_txt_seq_prev_monad():
+    a = ast.Num(n=10)
+    rep_type = List[int]
+
+    w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
+    w.prev_statement_is_monad()
+
+    r = w.apply_as_text('e5')
+    assert r == 'e5.Select(lambda e1: e1[0].Select(lambda eb: eb.pt()))'
+
+
 def test_select_obj_apply_txt_monad_notseq():
     a = ast.Num(n=10)
     rep_type = List[int]
@@ -214,6 +286,28 @@ def test_select_obj_apply_func_txt_seq():
 
     r = w.apply_as_function('e5')
     assert r == 'e5.Select(lambda e1: e1.pt())'
+
+
+def test_select_obj_apply_func_txt_notseq_prev_monad():
+    a = ast.Num(n=10)
+    rep_type = List[int]
+
+    w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
+    w.prev_statement_is_monad()
+
+    r = w.apply_as_function('e5')
+    assert r == 'e5[0].pt()'
+
+
+def test_select_obj_apply_func_txt_seq_prev_monad():
+    a = ast.Num(n=10)
+    rep_type = List[int]
+
+    w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
+    w.prev_statement_is_monad()
+
+    r = w.apply_as_function('e5')
+    assert r == 'e5[0].Select(lambda e1: e1.pt())'
 
 
 def test_select_obj_apply_func_txt_monad_notseq():

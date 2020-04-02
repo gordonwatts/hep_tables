@@ -173,9 +173,8 @@ class _map_to_data(ast.NodeVisitor):
             self.visit(expr)
         else:
             monad_index = self.carry_monad_forward(root_expr)
-            monad_var = new_var_name()
 
-            expr = _ast_replace(expr, root_expr, _ast_VarRef(f'{monad_var}[{monad_index}]'))
+            expr = _ast_replace(expr, root_expr, _ast_VarRef(f'<monad-ref>[{monad_index}]'))
 
             if self.sequence.rep_type is List[object]:
                 # Since this guy is a sequence, we have to turn it into not-a sequence for

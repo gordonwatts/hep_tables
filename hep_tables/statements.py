@@ -43,6 +43,7 @@ class _monad_manager:
         if self._previous_statement_monad:
             var_name_replacement = F'{var_name}[0]'
             main_func = main_func.replace(var_name, var_name_replacement)
+            main_func = main_func.replace('<monad-ref>', var_name)
 
         if len(self._monads) == 0:
             return main_func
@@ -50,6 +51,7 @@ class _monad_manager:
         re_based = [m_func.replace(m_var, var_name) for m_var, m_func in self._monads]
 
         interior = ', '.join([main_func] + re_based)
+
         return f'({interior})'
 
     def carry_monad_forward(self, index: int):
