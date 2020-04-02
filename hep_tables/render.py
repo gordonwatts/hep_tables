@@ -473,7 +473,7 @@ def _resolve_arg(a: ast.AST) -> str:
         return f'"{a.s}"'
     if isinstance(a, ast.Num):
         return str(a.n)
-    raise Exception("Can only deal with strings and numbers as terminals")
+    raise Exception(f"Can only deal with strings and numbers as terminals ({ast.dump(a)})")
 
 
 _known_types = {
