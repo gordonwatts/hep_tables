@@ -1,7 +1,6 @@
 # Code to implement statments that will build up the LINQ query, a bit at a time.
 import ast
 
-from numpy.lib.arraysetops import isin
 from hep_tables.utils import new_var_name
 from typing import Type, List
 
@@ -54,7 +53,7 @@ class _monad_manager:
 
         return f'({interior})'
 
-    def carry_monad_forward(self, index: int):
+    def carry_monad_forward(self, index: int) -> int:
         '''
         The previous statement is a tuple, containing a monad. We want to pass it down a statement.
 
@@ -96,8 +95,12 @@ class statement_base:
     def apply_as_function(self, var_name: str) -> str:
         assert False, 'This should be overriden'
 
-    def add_monad(self, var_name: str, monad: str):
+    def add_monad(self, var_name: str, monad: str) -> int:
         'Add a monad to be carried along'
+        assert False, 'This should be overridden'
+
+    def carry_monad_forward(self, index: int) -> int:
+        'Carry a monad forward to this statement'
         assert False, 'This should be overridden'
 
 
@@ -125,12 +128,12 @@ class statement_df(statement_base):
         assert isinstance(df, xaod_table)
         return df.event_source
 
-    def add_monad(self, var_name: str, monad: str):
+    def add_monad(self, var_name: str, monad: str) -> int:
         '''
         No monad can be added on to this. Move quietly along. If someone calls apply then we
         will actually shut everything down.
         '''
-        pass
+        assert False, 'this should never be called'
 
 
 class statement_select(_monad_manager, statement_base):

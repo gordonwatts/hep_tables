@@ -1,13 +1,11 @@
 import ast
 from typing import List
 
-from dataframe_expressions.DataFrame import ast_DataFrame
 from func_adl import ObjectStream
 import pytest
 
-from hep_tables.hep_table import xaod_table
 from hep_tables.statements import (
-    _monad_manager, statement_df, statement_select, statement_where)
+    _monad_manager, statement_select, statement_where)
 
 from .utils_for_testing import f, reset_var_counter  # NOQA
 
@@ -62,14 +60,6 @@ def test_monad_reference_prev():
     m = _monad_manager()
     m.prev_statement_is_monad()
     assert m.render('e1', 'e1.jets(<monad-ref>[1])') == 'e1[0].jets(e1[1])'
-
-
-def test_statement_df_add_monad():
-    d = xaod_table(f)
-    s = statement_df(ast_DataFrame(d))
-
-    r = s.add_monad('e1', 'e1.jets()')
-    assert r is None
 
 
 def test_where_obj_apply_notseq(object_stream):

@@ -98,7 +98,8 @@ class _map_to_data(ast.NodeVisitor):
                 assert len(statements) == 0, \
                     'Internal programming error - cannot deal with statements and term'
                 vn = new_var_name()
-                st_select = statement_select(a.value, term.type, vn, term.term, term.type is List[object])
+                st_select = statement_select(a.value, term.type, vn,
+                                             term.term, term.type is List[object])
                 self.statements.append(st_select)
                 self.sequence = st_select
 
