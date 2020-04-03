@@ -226,38 +226,7 @@ class _map_to_data(ast.NodeVisitor):
             self.statements.append(st)
             self.sequence = st
 
-            pass
-
-            # Below code is form above, if we repeat it, it should be pulled into
-            # a method.
-            # # How we do the filter depends on what we are looking at
-            # # 1. object (implied sequence, one item per event):
-            # #       d.Where(lambda e: e > 10)
-            # # 2. List[object] (explicit sequence, one list per event):
-            # #       d.Select(lambda e: e.Where(labmda ep: ep > 10))
-            # if self.sequence.rep_type is List[object]:
-            #     # Since this guy is a sequence, we have to turn it into not-a sequence for
-            #       processing.
-            #     filter_sequence, trm = _render_expression(
-            #         statement_unwrap_list(self.sequence._ast, self.sequence.rep_type), a.filter,
-            #         self.context)
-            #     act_on_sequence = True
-            #     assert trm == 'main_sequence', 'Unexpected term type for filter expression'
-            # else:
-            #     filter_sequence, trm = _render_expression(self.sequence, a.filter, self.context)
-            #     act_on_sequence = False
-            #     assert trm == 'main_sequence', 'Unexpected term type for filter expression'
-
-            # assert len(filter_sequence) > 0
-            # var_name = new_var_name()
-            # stem = var_name
-            # for s in filter_sequence:
-            #     stem = s.apply_as_function(stem)
-            # st = statement_where(a, self.sequence.rep_type,
-            #                     var_name, stem,
-            #                     act_on_sequence)
-            # self.statements.append(st)
-            # self.sequence = st
+            # TODO: pull this stuff above out - it is common!
 
     def visit_Call(self, a: ast.Call):
         assert isinstance(a.func, ast.Attribute), 'Function calls can only be method calls'
