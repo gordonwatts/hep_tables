@@ -48,7 +48,7 @@ def test_user_function_with_map_fcall(good_transform_request, reduce_wait_time, 
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e6: e6.Select(lambda e2: tns(e2.pt()))")
+                         .Select("lambda e5: e5.Select(lambda e2: tns(e2.pt()))")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -64,7 +64,7 @@ def test_user_function_with_map_2fcall(good_transform_request, reduce_wait_time,
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e9: e9.Select(lambda e2: tns(e2.pt(), e2.eta()))")
+                         .Select("lambda e7: e7.Select(lambda e2: tns(e2.pt(), e2.eta()))")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt
 
@@ -82,9 +82,9 @@ def test_user_func_with_two_maps(good_transform_request, reduce_wait_time, files
     txt = translate_linq(
         f
         .Select("lambda e1: (e1.jets(), e1)")
-        .Select("lambda e11: e11[0].Select(lambda e3: "
-                "e11[1]"
+        .Select("lambda e14: e14[0].Select(lambda e3: "
+                "e14[1]"
                 ".Electrons()"
-                ".Select(lambda e10: DeltaR(e10.eta(), e3.eta())))")
+                ".Select(lambda e13: DeltaR(e13.eta(), e3.eta())))")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json['selection'] == txt

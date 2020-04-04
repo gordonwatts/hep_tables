@@ -31,13 +31,19 @@ class replace_an_ast:
         self._tracker = tracker
         self._source = source
         self._dest = dest
+        self._done = False
 
     def __enter__(self):
-        self._tracker.ast_replacements.append((self._source, self._dest))
+        # TODO: WARNING - this might be hiding aliases, if we ever want to do two things
+        # of the same object, then this might cause us problems!!!
+        if self._tracker.lookup_ast(self._source) is None:
+            self._tracker.ast_replacements.append((self._source, self._dest))
+            self._done = True
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        r = self._tracker.ast_replacements.pop()
-        assert r[0] is self._source
+        if self._done:
+            r = self._tracker.ast_replacements.pop()
+            assert r[0] is self._source
 
 
 class _statement_tracker:
@@ -328,6 +334,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 with self.substitute_ast(self.sequence._ast, _ast_VarRef(var_name, object)):
                     # arg1 = _ast_replace(arg, self.sequence._ast, _ast_VarRef(var_name, object))
                     return _resolve_arg(self.sequence, arg, self.context, self)
+
             resolved_args = [do_resolve(arg) for arg in a.args]
             name = a.func.callable.__name__
             for t in resolved_args:
@@ -336,7 +343,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                     f'Functions with array arguments are not supported ({name})'
             args = ', '.join(t.term for t in resolved_args)
             st = statement_select(a, object, var_name,
-                                  f'{name}({args})', True)
+                                  f'{name}({args})', self.sequence.rep_type is List[object])
             self.statements.append(st)
             self.sequence = st
             pass
@@ -576,9 +583,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 # be using)
                 # We need this to be "clean" because we can't tell from context what should
                 # be inline and what should be outter.
-                mapper = _map_to_data(self.sequence, self.context, self)
-                mapper.visit(a)
-                pass
+                self.process_with_mapper(a)
 
     r = render_expression(current_sequence, context, p_tracker)
     r.visit(a)
@@ -635,8 +640,12 @@ def _resolve_arg(curret_sequence: statement_base, expr: ast.AST, context: render
         or (trm.term == 'main_sequence' and len(filter_sequence) > 0)
 
     if len(filter_sequence) > 0:
-        var_name = new_var_name()
-        stem = var_name
+        # If we have to create a new variable here, then probably somethign has gone wrong.
+        a_resolved = p_tracker.lookup_ast(curret_sequence._ast)
+        assert (a_resolved is not None) \
+            or (filter_sequence[0].apply_as_function('bogus').find('bogus') < 0)
+        assert a_resolved is None or isinstance(a_resolved, _ast_VarRef)
+        stem = 'bogus' if a_resolved is None else a_resolved.name
         for s in filter_sequence:
             stem = s.apply_as_function(stem)
         return term_info(stem, filter_sequence[-1].rep_type)
