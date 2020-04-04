@@ -69,7 +69,7 @@ def test_user_function_with_map_2fcall(good_transform_request, reduce_wait_time,
     assert json['selection'] == txt
 
 
-def test_object_function(good_transform_request, reduce_wait_time, files_back_1):
+def test_user_func_with_two_maps(good_transform_request, reduce_wait_time, files_back_1):
 
     @user_func
     def DeltaR(e1: float, e2: float) -> float:

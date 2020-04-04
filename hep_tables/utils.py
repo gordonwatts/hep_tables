@@ -1,5 +1,5 @@
 import ast
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 from dataframe_expressions import ast_DataFrame
 
@@ -104,22 +104,67 @@ def _find_root_expr(expr: ast.AST, possible_root: ast.AST) -> ast.AST:
     return r.found
 
 
-def _ast_replace(expression: ast.AST, source: ast.AST, dest: ast.AST) -> ast.AST:
+def _parse_elements(s: str) -> List[str]:
     '''
-    Scan the tree looking for `source` and replace it with `dest`. No other checking is done.
+    Return comma separated strings at the top level
     '''
+    if s[0] != '(' and s[1] != ')':
+        return [s]
 
-    class replace_it(ast.NodeTransformer):
-        def __init__(self, source: ast.AST, dest: ast.AST):
-            ast.NodeTransformer.__init__(self)
-            self._source = source
-            self._dest = dest
+    def parse_for_commas(part_list: str) -> Tuple[List[int], int]:
+        result = []
 
-        def visit(self, a: ast.AST):
-            if a is self._source:
-                return self._dest
+        ignore_before = 0
+        for i, c in enumerate(part_list):
+            if i >= ignore_before:
+                if c == ',':
+                    result.append(i+1)
+                if c == ')':
+                    return result, i+1
+                if c == '(':
+                    r, pos = parse_for_commas(part_list[i+1:])
+                    ignore_before = i + pos + 1
 
-            return ast.NodeTransformer.visit(self, a)
+        return result, len(part_list)
 
-    v = replace_it(source, dest)
-    return v.visit(expression)
+    commas, _ = parse_for_commas(s[1:-1])
+    bounds = [1] + [c + 1 for c in commas] + [len(s)]
+    segments = [s[i:j-1] for i, j in zip(bounds, bounds[1:])]
+
+    return segments
+
+
+def _index_text_tuple(s: str, index: int) -> str:
+    '''
+    If s is a tuple, then return the index'th item
+    '''
+    splits = _parse_elements(s)
+    if len(splits) == 1:
+        return f'{s}[{index}]'
+
+    if len(splits) < index:
+        raise Exception(f'Internal Error: attempt to index tuple fail: {s} - index {index}')
+
+    return splits[index]
+
+
+
+# def _ast_replace(expression: ast.AST, source: ast.AST, dest: ast.AST) -> ast.AST:
+#     '''
+#     Scan the tree looking for `source` and replace it with `dest`. No other checking is done.
+#     '''
+
+#     class replace_it(ast.NodeTransformer):
+#         def __init__(self, source: ast.AST, dest: ast.AST):
+#             ast.NodeTransformer.__init__(self)
+#             self._source = source
+#             self._dest = dest
+
+#         def visit(self, a: ast.AST):
+#             if a is self._source:
+#                 return self._dest
+
+#             return ast.NodeTransformer.visit(self, a)
+
+#     v = replace_it(source, dest)
+#     return v.visit(expression)

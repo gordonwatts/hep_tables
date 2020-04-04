@@ -8,7 +8,7 @@ from typing import Any
 from dataframe_expressions import DataFrame, render
 from func_adl_xAOD import use_exe_servicex
 
-from .render import _map_to_data, _render_expression
+from .render import _render_expression
 from .statements import statement_df
 from .utils import _find_dataframes
 
@@ -41,7 +41,7 @@ def make_local(df: DataFrame) -> Any:
     # mapper = _map_to_data(base_statement, context)
     # mapper.visit(expression)
 
-    statements, term = _render_expression(base_statement, expression, context)
+    statements, term = _render_expression(base_statement, expression, context, None)
 
     # Render the expression to a LINQ expression.
     # We start with the dataframe.

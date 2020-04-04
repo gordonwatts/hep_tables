@@ -3,9 +3,11 @@ import ast
 from dataframe_expressions import ast_DataFrame
 from dataframe_expressions.render import render
 from func_adl import EventDataset
+import pytest
 
 from hep_tables import xaod_table
-from hep_tables.utils import _find_dataframes, _find_root_expr
+from hep_tables.utils import (
+    _find_dataframes, _find_root_expr, _index_text_tuple, _parse_elements)
 
 # For use in testing - a mock.
 f = EventDataset('locads://bogus')
@@ -87,6 +89,51 @@ def test_find_root_arg_not_right():
 
     r = _find_root_expr(call, jets_attr)
     assert r is a
+
+
+def test_no_splits():
+    s = _parse_elements('hi')
+    assert len(s) == 1
+    assert s[0] == 'hi'
+
+
+def test_simple_split():
+    s = _parse_elements('(hi,there)')
+    assert len(s) == 2
+    assert s[0] == 'hi'
+    assert s[1] == 'there'
+
+
+def test_split_not_parans():
+    s = _parse_elements('hi, there')
+    assert len(s) == 1
+
+
+def test_split_with_func():
+    s = _parse_elements('(sin(20), e1)')
+    assert len(s) == 2
+    assert s[0] == 'sin(20)'
+    assert s[1] == ' e1'
+
+
+def test_split_with_2arg_func():
+    s = _parse_elements('(asing(x,y),e2)')
+    assert len(s) == 2
+    assert s[0] == 'asing(x,y)'
+    assert s[1] == 'e2'
+
+
+def test_text_tuple_none():
+    assert _index_text_tuple('e5', 1) == 'e5[1]'
+
+
+def test_text_tuple_good():
+    assert _index_text_tuple('(e5,e6)', 0) == 'e5'
+
+
+def test_text_tuple_bad():
+    with pytest.raises(Exception):
+        _index_text_tuple('(e5,e6)', 2)
 
 # def test_fail_to_find_two_dataframes():
 #     df1 = xaod_table(f)

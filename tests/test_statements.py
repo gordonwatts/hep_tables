@@ -56,10 +56,22 @@ def test_monad_prev_statement_with_monad():
     assert m.render('e1', 'e1.jets()') == '(e1[0].jets(), e1[1].eles())'
 
 
+def test_monad_render_with_monad():
+    m = _monad_manager()
+    m.prev_statement_is_monad()
+    assert m.render('(e1, e2)', '(e1, e2).jets()') == 'e1.jets()'
+
+
 def test_monad_reference_prev():
     m = _monad_manager()
     m.prev_statement_is_monad()
     assert m.render('e1', 'e1.jets(<monad-ref>[1])') == 'e1[0].jets(e1[1])'
+
+
+def test_monad_reference_prev_of_monad():
+    m = _monad_manager()
+    m.prev_statement_is_monad()
+    assert m.render('(e1,e2)', '<monad-ref>[1].jets()') == 'e2.jets()'
 
 
 def test_where_obj_apply_notseq(object_stream):

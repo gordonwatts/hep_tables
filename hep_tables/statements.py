@@ -1,7 +1,8 @@
 # Code to implement statments that will build up the LINQ query, a bit at a time.
 import ast
+import re
 
-from hep_tables.utils import new_var_name
+from hep_tables.utils import new_var_name, _index_text_tuple
 from typing import Type, List
 
 from func_adl import ObjectStream
@@ -40,9 +41,16 @@ class _monad_manager:
         '''Carry along the monads'''
         var_name_replacement = var_name
         if self._previous_statement_monad:
-            var_name_replacement = F'{var_name}[0]'
+            var_name_replacement = _index_text_tuple(var_name, 0)
             main_func = main_func.replace(var_name, var_name_replacement)
-            main_func = main_func.replace('<monad-ref>', var_name)
+            monad_references = re.findall('<monad-ref>\[[0-9]+\]', main_func)
+            for m in monad_references:
+                index_match = re.findall('\[([0-9]+)\]', m)
+                assert len(index_match) == 1
+                index = int(index_match[0])
+                replace_string = _index_text_tuple(var_name, index)
+                main_func = main_func.replace(m, replace_string)
+            # main_func = main_func.replace('<monad-ref>', var_name)
 
         if len(self._monads) == 0:
             return main_func
