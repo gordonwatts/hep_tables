@@ -148,7 +148,6 @@ def _index_text_tuple(s: str, index: int) -> str:
     return splits[index]
 
 
-
 # def _ast_replace(expression: ast.AST, source: ast.AST, dest: ast.AST) -> ast.AST:
 #     '''
 #     Scan the tree looking for `source` and replace it with `dest`. No other checking is done.

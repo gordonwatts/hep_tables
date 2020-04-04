@@ -43,9 +43,9 @@ class _monad_manager:
         if self._previous_statement_monad:
             var_name_replacement = _index_text_tuple(var_name, 0)
             main_func = main_func.replace(var_name, var_name_replacement)
-            monad_references = re.findall('<monad-ref>\[[0-9]+\]', main_func)
+            monad_references = re.findall('<monad-ref>\\[[0-9]+\\]', main_func)
             for m in monad_references:
-                index_match = re.findall('\[([0-9]+)\]', m)
+                index_match = re.findall('\\[([0-9]+)\\]', m)
                 assert len(index_match) == 1
                 index = int(index_match[0])
                 replace_string = _index_text_tuple(var_name, index)

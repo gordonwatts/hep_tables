@@ -412,7 +412,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
     '''
     class render_expression(_statement_tracker, ast.NodeVisitor):
         def __init__(self, current_sequence: statement_base, context: render_context,
-                     p_tracker: _statement_tracker):
+                     p_tracker: Optional[_statement_tracker]):
             ast.NodeVisitor.__init__(self)
             _statement_tracker.__init__(self, current_sequence, p_tracker)
             self.term_stack: List[term_info] = []

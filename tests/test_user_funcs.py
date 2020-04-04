@@ -3,8 +3,8 @@ import pytest
 
 from hep_tables import make_local, xaod_table
 
-from .utils_for_testing import f, reduce_wait_time, reset_var_counter
-from .utils_for_testing import files_back_1, good_transform_request
+from .utils_for_testing import f, reduce_wait_time, reset_var_counter  # NOQA
+from .utils_for_testing import files_back_1, good_transform_request  # NOQA
 from .utils_for_testing import translate_linq
 
 
