@@ -8,7 +8,7 @@ from typing import Any
 from dataframe_expressions import DataFrame, render
 from func_adl_xAOD import use_exe_servicex
 
-from .render import _map_to_data
+from .render import _map_to_data, _render_expression
 from .statements import statement_df
 from .utils import _find_dataframes
 
@@ -34,18 +34,20 @@ def make_local(df: DataFrame) -> Any:
     # Find the dataframe on which this is all based.
     base_ast_df = _find_dataframes(expression)
     base_statement = statement_df(base_ast_df)
+    assert isinstance(base_ast_df.dataframe, xaod_table)
 
     # Lets render the code to access the data that has been
     # requested.
-    mapper = _map_to_data(base_statement, context)
-    mapper.visit(expression)
+    # mapper = _map_to_data(base_statement, context)
+    # mapper.visit(expression)
+
+    statements, term = _render_expression(base_statement, expression, context)
 
     # Render the expression to a LINQ expression.
     # We start with the dataframe.
     # TODO: Dataframe_expressions need dataframe declared as an object stream
-    assert isinstance(base_ast_df.dataframe, xaod_table)
     result = base_ast_df.dataframe.event_source
-    for seq in mapper.statements:
+    for seq in statements:
         result = seq.apply(result)
 
     if isinstance(result, ObjectStream):

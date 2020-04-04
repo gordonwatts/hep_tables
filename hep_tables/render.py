@@ -1,14 +1,16 @@
 import ast
 from typing import Dict, List, Optional, Tuple, Type
 
-from dataframe_expressions import (ast_DataFrame, ast_Filter, ast_Callable,
-                                   render_callable, render_context)
+from dataframe_expressions import (
+    ast_Callable, ast_DataFrame, ast_Filter, ast_FunctionPlaceholder,
+    render_callable, render_context)
 from func_adl_xAOD import use_exe_servicex
 
 from .statements import (
-    statement_base, statement_df, statement_select, statement_unwrap_list,
-    statement_where, statement_constant)
-from .utils import new_var_name, to_args_from_keywords, _find_root_expr, _ast_replace
+    statement_base, statement_constant, statement_df, statement_select,
+    statement_unwrap_list, statement_where)
+from .utils import (
+    _ast_replace, _find_root_expr, new_var_name, to_args_from_keywords)
 
 
 class _ast_VarRef(ast.AST):
@@ -229,23 +231,45 @@ class _map_to_data(ast.NodeVisitor):
             # TODO: pull this stuff above out - it is common!
 
     def visit_Call(self, a: ast.Call):
-        assert isinstance(a.func, ast.Attribute), 'Function calls can only be method calls'
         # Math function calls are treated like expressions
-        if a.func.attr in _known_simple_math_functions:
-            r, _ = _render_expression(self.sequence, a, self.context)
-            self.statements = self.statements + r
-        elif hasattr(self, f'visit_call_{a.func.attr}'):
-            m = getattr(self, f'visit_call_{a.func.attr}')
-            m(a.func.value, a.args, a.keywords, a)
-        else:
-            # We are now accessing a column or collection off a event or other collection.
-            # The LINQ, functional, way of doing this is by going down a level.
-            self.visit(a.func.value)
+        if isinstance(a.func, ast.Attribute):
+            if a.func.attr in _known_simple_math_functions:
+                r, _ = _render_expression(self.sequence, a, self.context)
+                self.statements = self.statements + r
+            elif hasattr(self, f'visit_call_{a.func.attr}'):
+                m = getattr(self, f'visit_call_{a.func.attr}')
+                m(a.func.value, a.args, a.keywords, a)
+            else:
+                # We are now accessing a column or collection off a event or other collection.
+                # The LINQ, functional, way of doing this is by going down a level.
+                self.visit(a.func.value)
 
-            # TODO: resovle arg should be a call to the expression thing!
-            resolved_args = [_resolve_arg(self.sequence, arg, self.context) for arg in a.args]
-            name = a.func.attr
-            self.append_call(a, name, [r.term for r in resolved_args])
+                # TODO: resovle arg should be a call to the expression thing!
+                resolved_args = [_resolve_arg(self.sequence, arg, self.context) for arg in a.args]
+                name = a.func.attr
+                self.append_call(a, name, [r.term for r in resolved_args])
+        elif isinstance(a.func, ast_FunctionPlaceholder):
+            # We will embed this in a select statement. And the sequence items will
+            # need to be explicitly referenced in the arguments.
+            var_name = new_var_name()
+
+            def do_resolve(arg):
+                arg1 = _ast_replace(arg, self.sequence._ast, _ast_VarRef(var_name, object))
+                return _resolve_arg(self.sequence, arg1, self.context)
+            resolved_args = [do_resolve(arg) for arg in a.args]
+            name = a.func.callable.__name__
+            for t in resolved_args:
+                # We can't deal with arrays as arguments yet.
+                assert t.type is not List[object], \
+                    f'Functions with array arguments are not supported ({name})'
+            args = ', '.join(t.term for t in resolved_args)
+            st = statement_select(a, object, var_name,
+                                  f'{name}({args})', True)
+            self.statements.append(st)
+            self.sequence = st
+            pass
+        else:
+            assert False, 'Function calls can only be method calls or place holders'
 
     def visit_BinOp(self, a: ast.BinOp):
         # TODO: Should support 1.0 / j.pt as well as j.pt / 1.0
@@ -423,26 +447,37 @@ def _render_expression(current_sequence: statement_base, a: ast.AST, context: re
             '''
             Deal with math functions.
             '''
-            assert isinstance(a.func, ast.Attribute)
-            if a.func.attr not in _known_simple_math_functions:
-                self.process_with_mapper(a)
-            else:
-                assert len(a.args) == 0
+            assert isinstance(a.func, ast.Attribute) or isinstance(a.func, ast_FunctionPlaceholder)
 
-                self.visit(a.func.value)
-                v = self.term_stack.pop()
-
-                if v.term != 'main_sequence':
-                    self.term_stack.append(
-                        term_info(f'{_known_simple_math_functions[a.func.attr]}({v.term})',
-                                  v.type))
+            if isinstance(a.func, ast.Attribute):
+                if a.func.attr not in _known_simple_math_functions:
+                    self.process_with_mapper(a)
                 else:
-                    var_name = new_var_name()
-                    expr = f'({_known_simple_math_functions[a.func.attr]}({var_name}))'
-                    self.statements.append(
-                        statement_select(a, object, var_name, expr,
-                                         self.sequence.rep_type is List[object]))
-                    self.term_stack.append(term_info('main_sequence', List[float]))
+                    assert len(a.args) == 0
+
+                    self.visit(a.func.value)
+                    v = self.term_stack.pop()
+
+                    if v.term != 'main_sequence':
+                        self.term_stack.append(
+                            term_info(f'{_known_simple_math_functions[a.func.attr]}({v.term})',
+                                      v.type))
+                    else:
+                        var_name = new_var_name()
+                        expr = f'({_known_simple_math_functions[a.func.attr]}({var_name}))'
+                        self.statements.append(
+                            statement_select(a, object, var_name, expr,
+                                             self.sequence.rep_type is List[object]))
+                        self.term_stack.append(term_info('main_sequence', List[float]))
+            else:
+                # We are going to need to grab each argument (and in some cases we will
+                # need to use monads to track what the different arguments are going to
+                # be using)
+                # We need this to be "clean" because we can't tell from context what should
+                # be inline and what should be outter.
+                mapper = _map_to_data(self.sequence, self.context)
+                mapper.visit(a)
+                pass
 
     r = render_expression(current_sequence, context)
     r.visit(a)
@@ -469,7 +504,12 @@ _known_operators: Dict[Type, str] = {
 def _resolve_arg(curret_sequence: statement_base, expr: ast.AST, context: render_context) \
         -> term_info:
     '''
-    An argument to a function is an expression.
+    Resovel an expression in-line.
+
+    Arguments:
+        current_sequence        The current sequence is what - we can grab this from outside
+        expr                    Expression representing the argument
+        context                 The render context to pass through in case rendering is needed.
     '''
     # TODO: this should be resolve_inline_expression, and should be used in several places
     # in the above code. REFACTOR!!!
