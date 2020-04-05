@@ -1,4 +1,6 @@
 import ast
+from hep_tables.utils import reset_new_var_counter
+import hep_tables.local as hep_local
 from json import dumps, loads
 import logging
 import re
@@ -7,7 +9,8 @@ from unittest import mock
 
 from func_adl import EventDataset
 import pytest
-import servicex as fe
+import servicex.servicex as fe
+
 
 # For use in testing - a mock.
 f = EventDataset('locads://bogus')
@@ -18,19 +21,18 @@ logging.basicConfig(level=logging.NOTSET)
 
 @pytest.fixture(autouse=True)
 def reset_var_counter():
-    import hep_tables
     # Always start from zero
-    hep_tables.utils.reset_new_var_counter()
+    reset_new_var_counter()
     # This is the col name in our dummy data
-    hep_tables.local.default_col_name = b'JetPt'
+    hep_local.default_col_name = b'JetPt'
 
 
 @pytest.fixture(scope="module")
 def reduce_wait_time():
-    old_value = fe.servicex.servicex_status_poll_time
-    fe.servicex.servicex_status_poll_time = 0.01
+    old_value = fe.servicex_status_poll_time
+    fe.servicex_status_poll_time = 0.01
     yield None
-    fe.servicex.servicex_status_poll_time = old_value
+    fe.servicex_status_poll_time = old_value
 
 
 def make_minio_file(fname):
