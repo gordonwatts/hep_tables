@@ -146,24 +146,3 @@ def _index_text_tuple(s: str, index: int) -> str:
         raise Exception(f'Internal Error: attempt to index tuple fail: {s} - index {index}')
 
     return splits[index]
-
-
-# def _ast_replace(expression: ast.AST, source: ast.AST, dest: ast.AST) -> ast.AST:
-#     '''
-#     Scan the tree looking for `source` and replace it with `dest`. No other checking is done.
-#     '''
-
-#     class replace_it(ast.NodeTransformer):
-#         def __init__(self, source: ast.AST, dest: ast.AST):
-#             ast.NodeTransformer.__init__(self)
-#             self._source = source
-#             self._dest = dest
-
-#         def visit(self, a: ast.AST):
-#             if a is self._source:
-#                 return self._dest
-
-#             return ast.NodeTransformer.visit(self, a)
-
-#     v = replace_it(source, dest)
-#     return v.visit(expression)
