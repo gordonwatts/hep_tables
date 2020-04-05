@@ -1,6 +1,7 @@
 import ast
 from json import dumps, loads
 import logging
+import re
 import shutil
 from unittest import mock
 
@@ -95,4 +96,35 @@ def translate_linq(expr) -> str:
         import qastle
         return qastle.python_ast_to_text_ast(a)
 
-    return expr.value(translate)
+    linq = expr.value(translate)
+
+    # Replace all the eX's in order so that
+    # we don't have to keep re-writing when the algorithm changes.
+
+    return clean_linq(linq)
+
+
+def clean_linq(linq: str) -> str:
+    '''
+    Noramlize the variables in a linq expression. Should make the
+    linq expression more easily comparable even if the algorithm that
+    generates the underlying variable numbers changes.
+    '''
+    all_uses = re.findall('e[0-9]+', linq)
+    index = 0
+    used = []
+    mapping = {}
+    for v in all_uses:
+        if v not in used:
+            used.append(v)
+            new_var = f'a{index}'
+            index += 1
+            mapping[v] = new_var
+
+    max_len = max([len(k) for k in mapping.keys()])
+    for l in range(max_len, 0, -1):
+        for k in mapping.keys():
+            if len(k) == l:
+                linq = linq.replace(k, mapping[k])
+
+    return linq

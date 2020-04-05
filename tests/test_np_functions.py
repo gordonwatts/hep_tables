@@ -1,7 +1,7 @@
 from hep_tables import make_local, xaod_table, histogram
 from .utils_for_testing import f, reduce_wait_time, reset_var_counter # NOQA
 from .utils_for_testing import files_back_1, good_transform_request # NOQA
-from .utils_for_testing import translate_linq
+from .utils_for_testing import translate_linq, clean_linq
 from typing import Tuple
 
 
@@ -16,7 +16,7 @@ def test_numpy_abs(good_transform_request, reduce_wait_time, files_back_1):
         .Select("lambda e1: e1.met()")
         .Select("lambda e2: abs(e2)")
         .AsROOTTTree("file.root", "treeme", ['col1']))
-    assert json['selection'] == txt
+    assert clean_linq(json['selection']) == txt
 
 
 def test_numpy_histogram(good_transform_request, reduce_wait_time, files_back_1):
@@ -28,7 +28,7 @@ def test_numpy_histogram(good_transform_request, reduce_wait_time, files_back_1)
         f
         .Select("lambda e1: e1.met()")
         .AsROOTTTree("file.root", "treeme", ['col1']))
-    assert json['selection'] == txt
+    assert clean_linq(json['selection']) == txt
 
     assert h is not None
     assert isinstance(h, Tuple)

@@ -10,8 +10,7 @@ from func_adl_xAOD import use_exe_servicex
 from .statements import (
     statement_base, statement_constant, statement_df, statement_select,
     statement_unwrap_list, statement_where)
-from .utils import (
-    _find_root_expr, new_var_name, to_args_from_keywords)
+from .utils import _find_root_expr, new_var_name, to_args_from_keywords
 
 
 class _ast_VarRef(ast.AST):
@@ -49,7 +48,7 @@ class replace_an_ast:
 class _statement_tracker:
     '''
     Track statements in seperate stacks. We have a parent link so we can
-    look all the way back in the stack if need be.
+    look all the way back in the stack if need be when looking for a replacement.
     '''
     def __init__(self, start_sequence: statement_base, parent: Optional[_statement_tracker]):
         self._parent_tracker = parent
@@ -105,10 +104,8 @@ class _statement_tracker:
 
 class _map_to_data(_statement_tracker, ast.NodeVisitor):
     '''
-    The main driver of the translation. We build up a LINQ query - this means we have a
-    "sequence" that we are manipulating as we move through by either transforming (with
-    Select) or filtering (with Where). As such, we maintain something that tells us what
-    the current sequence is.
+    Translate a statement that is a series of map or map-like constructs into
+    LINQ-style SQL code. Support select, transform, and filter.
     '''
     def __init__(self, base_sequence: statement_base, context: render_context,
                  p_tracker: _statement_tracker):
@@ -126,6 +123,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         '''
         Check to see if the ast we are about to visit is the one that represents the current
         stream. If that is the case, then there is no need to generate any further code here.
+
+        Also check for a simple replacement.
         '''
         if a is self.sequence._ast:
             return
@@ -145,33 +144,14 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         'Get the expression and apply the filter'
         self.visit(a.expr)
 
-        # How we do the filter depends on what we are looking at
-        # 1. object (implied sequence, one item per event):
-        #       d.Where(lambda e: e > 10)
-        # 2. List[object] (explicit sequence, one list per event):
-        #       d.Select(lambda e: e.Where(labmda ep: ep > 10))
-        if self.sequence.rep_type is List[object]:
-            # Since this guy is a sequence, we have to turn it into not-a sequence for processing.
-            filter_sequence, trm = _render_expression(
-                statement_unwrap_list(self.sequence._ast, self.sequence.rep_type), a.filter,
-                self.context, self)
-            act_on_sequence = True
-            assert trm.term == 'main_sequence', 'Unexpected term type for filter expression'
-        else:
-            filter_sequence, trm = _render_expression(self.sequence, a.filter, self.context, self)
-            act_on_sequence = False
-            assert trm.term == 'main_sequence', 'Unexpected term type for filter expression'
-
-        assert len(filter_sequence) > 0
         var_name = new_var_name()
-        stem = var_name
-        for s in filter_sequence:
-            stem = s.apply_as_function(stem)
-        st = statement_where(a, self.sequence.rep_type,
-                             var_name, stem,
-                             act_on_sequence)
-        self.statements.append(st)
-        self.sequence = st
+        with self.substitute_ast(self.sequence._ast, _ast_VarRef(var_name, object)):
+            term = _resolve_expr_inline(self.sequence, a.filter, self.context, self)
+            st = statement_where(a, self.sequence.rep_type,
+                                 var_name, term.term,
+                                 self.sequence.rep_type is List[object])
+            self.statements.append(st)
+            self.sequence = st
 
     def visit_Attribute(self, a: ast.Attribute):
         # Get the stream up to the base expressoin.
@@ -264,42 +244,13 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 select_var = new_var_name()
                 with self.substitute_ast(
                         self.sequence._ast, _ast_VarRef(select_var, object)):
-                    # expr = _ast_replace(expr, root_expr,
-                    #                     _ast_VarRef(f'<monad-ref>[{monad_index}]', object))
-                    # expr = _ast_replace(expr, self.sequence._ast, _ast_VarRef(select_var,
-                    #                     object))
-
-                    if self.sequence.rep_type is List[object]:
-                        # Since this guy is a sequence, we have to turn it into not-a sequence for
-                        # processing.
-                        trm = _resolve_arg(statement_unwrap_list(self.sequence._ast,
-                                                                 self.sequence.rep_type),
-                                           expr, self.context, self)
-                        # func_sequence, trm = _render_expression(
-                        #     statement_unwrap_list(self.sequence._ast, self.sequence.rep_type),
-                        #     expr,
-                        #     self.context, self)
-                        act_on_sequence = True
-                    else:
-                        assert False, 'This path has not been tested - DANGER'
-                        # func_sequence, trm = _render_expression(self.sequence, expr,
-                        # self.context, self)
-                        # act_on_sequence = False
-                    # assert trm.term == 'main_sequence' or len(func_sequence) == 0, \
-                    #     'Unexpected term type for filter expression'
-
-            # Build the select statement as an internal function.
-
-            # if len(func_sequence) == 0:
-            #     internal_func = trm.term
-            # else:
-            #     internal_func = select_var
-            #     for s in func_sequence:
-            #         internal_func = s.apply_as_function(internal_func)
+                    trm = _resolve_expr_inline(statement_unwrap_list(self.sequence._ast,
+                                                                     self.sequence.rep_type),
+                                               expr, self.context, self)
 
             st = statement_select(a, List[object],
                                   select_var, trm.term,
-                                  act_on_sequence)
+                                  self.sequence.rep_type is List[object])
             st.prev_statement_is_monad()
             self.statements.append(st)
             self.sequence = st
@@ -309,22 +260,16 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
     def visit_Call(self, a: ast.Call):
         # Math function calls are treated like expressions
         if isinstance(a.func, ast.Attribute):
-            if a.func.attr in _known_simple_math_functions:
-                r, _ = _render_expression(self.sequence, a, self.context, self)
-                self.statements = self.statements + r
-            elif hasattr(self, f'visit_call_{a.func.attr}'):
+            if hasattr(self, f'visit_call_{a.func.attr}'):
                 m = getattr(self, f'visit_call_{a.func.attr}')
                 m(a.func.value, a.args, a.keywords, a)
             else:
-                # We are now accessing a column or collection off a event or other collection.
-                # The LINQ, functional, way of doing this is by going down a level.
                 self.visit(a.func.value)
-
-                # TODO: resovle arg should be a call to the expression thing!
-                resolved_args = [_resolve_arg(self.sequence, arg, self.context, self)
+                resolved_args = [_resolve_expr_inline(self.sequence, arg, self.context, self)
                                  for arg in a.args]
                 name = a.func.attr
                 self.append_call(a, name, [r.term for r in resolved_args])
+
         elif isinstance(a.func, ast_FunctionPlaceholder):
             # We will embed this in a select statement. And the sequence items will
             # need to be explicitly referenced in the arguments.
@@ -333,15 +278,16 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             def do_resolve(arg):
                 with self.substitute_ast(self.sequence._ast, _ast_VarRef(var_name, object)):
                     # arg1 = _ast_replace(arg, self.sequence._ast, _ast_VarRef(var_name, object))
-                    return _resolve_arg(self.sequence, arg, self.context, self)
+                    return _resolve_expr_inline(self.sequence, arg, self.context, self)
 
             resolved_args = [do_resolve(arg) for arg in a.args]
-            name = a.func.callable.__name__
             for t in resolved_args:
                 # We can't deal with arrays as arguments yet.
                 assert t.type is not List[object], \
                     f'Functions with array arguments are not supported ({name})'
             args = ', '.join(t.term for t in resolved_args)
+
+            name = a.func.callable.__name__
             st = statement_select(a, object, var_name,
                                   f'{name}({args})', self.sequence.rep_type is List[object])
             self.statements.append(st)
@@ -349,11 +295,6 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             pass
         else:
             assert False, 'Function calls can only be method calls or place holders'
-
-    def visit_BinOp(self, a: ast.BinOp):
-        # TODO: Should support 1.0 / j.pt as well as j.pt / 1.0
-        r, _ = _render_expression(self.sequence, a, self.context, self)
-        self.statements = self.statements + r
 
     def append_call(self, a: ast.AST, name_of_method: str, args: Optional[List[str]]) -> None:
         'Append a call onto the call chain that will look at this method'
@@ -448,6 +389,8 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                         stem = single.apply_as_function(stem)
                     return stem
                 else:
+                    # TODO: if we remove this if block, then this look like _resolve_inline.
+                    # This tests fail if we do that - understand if we really need this.
                     self.statements += s
                     self.sequence = s[-1]
                     return var_name
@@ -488,25 +431,13 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
 
         def visit_BoolOp(self, a: ast.BoolOp):
             'and or'
-            def process_term(r: render_expression, a: ast.AST):
-                s_left, left = _render_expression(r.sequence, a, self.context, self)
-                # r.statements += s_left
-                return s_left, left
-
-            assert len(a.values) == 2
-            terms = [process_term(self, a) for a in a.values]
-            assert [t[1].term for t in terms].count('main_sequence') == len(terms)
-
+            assert len(a.values) == 2, 'Cannot do bool operations more than two operands'
             var_name = new_var_name()
-            l_stem = var_name
-            for s in terms[0][0]:
-                l_stem = s.apply_as_function(l_stem)
+            with self.substitute_ast(self.sequence._ast, _ast_VarRef(var_name, object)):
+                left = _resolve_expr_inline(self.sequence, a.values[0], self.context, self)
+                right = _resolve_expr_inline(self.sequence, a.values[1], self.context, self)
 
-            r_stem = var_name
-            for s in terms[1][0]:
-                r_stem = s.apply_as_function(r_stem)
-
-            expr = f'({l_stem}) {_known_operators[type(a.op)]} ({r_stem})'
+            expr = f'({left.term}) {_known_operators[type(a.op)]} ({right.term})'
             st = statement_select(a, bool, var_name, expr, False)
             self.statements.append(st)
             self.sequence = st
@@ -608,8 +539,8 @@ _known_operators: Dict[Type, str] = {
     }
 
 
-def _resolve_arg(curret_sequence: statement_base, expr: ast.AST, context: render_context,
-                 p_tracker: _statement_tracker) \
+def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context: render_context,
+                         p_tracker: _statement_tracker) \
         -> term_info:
     '''
     Resovel an expression in-line.
@@ -618,6 +549,7 @@ def _resolve_arg(curret_sequence: statement_base, expr: ast.AST, context: render
         current_sequence        The current sequence is what - we can grab this from outside
         expr                    Expression representing the argument
         context                 The render context to pass through in case rendering is needed.
+        p_tracker               Parent tracker to keep the chain for lookups going
     '''
     # TODO: this should be resolve_inline_expression, and should be used in several places
     # in the above code. REFACTOR!!!
