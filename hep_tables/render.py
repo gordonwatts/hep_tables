@@ -280,6 +280,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                     # arg1 = _ast_replace(arg, self.sequence._ast, _ast_VarRef(var_name, object))
                     return _resolve_expr_inline(self.sequence, arg, self.context, self)
 
+            name = a.func.callable.__name__
+
             resolved_args = [do_resolve(arg) for arg in a.args]
             for t in resolved_args:
                 # We can't deal with arrays as arguments yet.
@@ -287,12 +289,10 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                     f'Functions with array arguments are not supported ({name})'
             args = ', '.join(t.term for t in resolved_args)
 
-            name = a.func.callable.__name__
             st = statement_select(a, object, var_name,
                                   f'{name}({args})', self.sequence.rep_type is List[object])
             self.statements.append(st)
             self.sequence = st
-            pass
         else:
             assert False, 'Function calls can only be method calls or place holders'
 
