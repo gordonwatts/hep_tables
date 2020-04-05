@@ -1,5 +1,3 @@
-from dataframe_expressions import user_func
-
 from hep_tables import make_local, xaod_table
 
 from .utils_for_testing import f, reduce_wait_time, reset_var_counter  # NOQA
@@ -80,11 +78,6 @@ def test_object_compare_pass_eta(good_transform_request, reduce_wait_time, files
 
 
 def test_two_maps(good_transform_request, reduce_wait_time, files_back_1):
-
-    @user_func
-    def DeltaR(e1: float, e2: float) -> float:
-        assert False, 'this is a fake function and should never be called'
-
     df = xaod_table(f)
     seq = df.jets.map(lambda j: df.Electrons.map(lambda e: e.eta + j.eta))
     make_local(seq)
@@ -100,12 +93,44 @@ def test_two_maps(good_transform_request, reduce_wait_time, files_back_1):
     assert clean_linq(json['selection']) == txt
 
 
-def test_three_maps():
-    assert False
+def test_three_maps(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.map(
+        lambda j: df.Electrons.map(
+            lambda e: df.tracks.map(
+                lambda t: t.eta + e.eta + j.eta)))
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.jets(), e1)")
+        .Select("lambda e14: e14[0].Select(lambda e3: "
+                "e14[1].Electrons()"
+                ".Select(lambda e13: e14[1].tracks()"
+                ".Select(lambda e2: e2.eta() + e13.eta() + e3.eta())))")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
 
 
-def test_four_maps():
-    assert False
+def test_four_maps(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.map(
+        lambda j: df.Electrons.map(
+            lambda e: df.tracks.map(
+                lambda t: df.mcs.map(
+                    lambda mc: t.eta + e.eta + j.eta + mc.eta()))))
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.jets(), e1)")
+        .Select("lambda e14: e14[0].Select("
+                "lambda e3: e14[1].Electrons().Select("
+                "lambda e13: e14[1].tracks().Select("
+                "lambda e2: e14[1].mcs().Select("
+                "lambda e5: e2.eta() + e13.eta() + e3.eta() + e5.eta()))))")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
 
 
 def test_map_in_filter():
