@@ -1,6 +1,6 @@
 import pytest
 
-from hep_tables import make_local, xaod_table, RenderException
+from hep_tables import make_local, xaod_table, RenderException, curry
 
 from .utils_for_testing import f, reduce_wait_time, reset_var_counter  # NOQA
 from .utils_for_testing import files_back_1, good_transform_request  # NOQA
@@ -65,6 +65,26 @@ def test_simple_capture_and_replace(good_transform_request, reduce_wait_time, fi
 def test_object_compare(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df.jets.map(lambda j: df.Electrons.DeltaR(j))
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.jets(), e1)")
+        .Select('lambda e8: e8[0].Select(lambda e3: '
+                'e8[1]'
+                '.Electrons()'
+                '.Select(lambda e7: e7.DeltaR(e3)))')
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_object_compare_curried(good_transform_request, reduce_wait_time, files_back_1):
+    @curry
+    def c_func(d, j):
+        return d.Electrons.DeltaR(j)
+
+    df = xaod_table(f)
+    seq = df.jets.map(c_func(df))
     make_local(seq)
     json = good_transform_request
     txt = translate_linq(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import ast
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type, Callable
+import inspect
 
 from dataframe_expressions import (
     ast_Callable, ast_DataFrame, ast_Filter, ast_FunctionPlaceholder,
@@ -16,6 +17,32 @@ from .utils import _find_root_expr, new_var_name, to_args_from_keywords
 class RenderException(Exception):
     def __init__(self, msg):
         Exception.__init__(self, msg)
+
+
+def curry(f: Callable) -> Callable:
+    '''
+    This will take the given function `f` and return a new function that needs only the
+    last argument.
+
+    @curry
+    def test(a, b, c):
+        a+b+c
+
+    then you can do:
+        t1 = test(a, b)
+        assert t1(c) == a+b+c
+    '''
+    nargs = len(inspect.signature(f).parameters)
+
+    def build_curried_function(*args) -> Callable:
+        def apply_last_arg(last_arg):
+            new_args = args + (last_arg,)
+            return f(*new_args)
+
+        assert len(args) == (nargs-1)
+        return apply_last_arg
+
+    return build_curried_function
 
 
 class _ast_VarRef(ast.AST):
