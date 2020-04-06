@@ -148,7 +148,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         with self.substitute_ast(self.sequence._ast, _ast_VarRef(var_name, object)):
             term = _resolve_expr_inline(self.sequence, a.filter, self.context, self)
             st = statement_where(a, self.sequence.rep_type,
-                                 var_name, term.term,
+                                 var_name, term,
                                  self.sequence.rep_type is List[object])
             # This is a bit of a kudge
             if len(self.statements) > 0:

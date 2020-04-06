@@ -133,9 +133,65 @@ def test_four_maps(good_transform_request, reduce_wait_time, files_back_1):
     assert clean_linq(json['selection']) == txt
 
 
-def test_map_in_filter():
-    assert False
+def test_map_in_filter(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    # MC particles's pt when they are close to a jet.
+    jets = df.jets
+    mcs = df.mcs
+    # This is so ugly: we are doing the mcs.map because we are doing array programming,
+    # but that is so far from per-event, which is basically what we want here. This shows
+    # up clearly inside the code, unfortunately - as we have to have special workarounds
+    # to deal with this.
+    near_a_jet = mcs[mcs.map(lambda mc: jets.pt.Count() == 2)]
+    make_local(near_a_jet.pt)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.mcs(), e1)")
+        .Select("lambda e2: e2[0].Where(lambda e3: e2[1].jets().Select(lambda e4: e4.pt()).Count() == 2)")
+        .Select('lambda e5: e5.Select(lambda e6: e6.pt())')
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
 
 
-def test_two_maps_in_filter():
-    assert False
+def test_map_in_filter_passthrough(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    # MC particles's pt when they are close to a jet.
+    mcs = df.mcs
+    # This is so ugly: we are doing the mcs.map because we are doing array programming,
+    # but that is so far from per-event, which is basically what we want here. This shows
+    # up clearly inside the code, unfortunately - as we have to have special workarounds
+    # to deal with this.
+    near_a_jet = mcs[mcs.map(lambda mc: mc.pt > 10.0)]
+    make_local(near_a_jet.pt)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.mcs(), e1)")
+        .Select("lambda e2: e2[0].Where(lambda e3: e2[1].jets().Select(labda e4: e4.pt()).Count() == 2")
+        .Select('lambda e5: e5.pt()')
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_map_in_repeat_root_filter(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    # MC particles's pt when they are close to a jet.
+    mcs = df.mcs
+    # This is so ugly: we are doing the mcs.map because we are doing array programming,
+    # but that is so far from per-event, which is basically what we want here. This shows
+    # up clearly inside the code, unfortunately - as we have to have special workarounds
+    # to deal with this.
+    near_a_jet = mcs[mcs.map(lambda mc: mcs.Count() == 2)]
+    make_local(near_a_jet.pt)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.mcs(), e1)")
+        .Select("lambda e2: e2[0].Where(lambda e3: e2[1].jets().Select(labda e4: e4.pt()).Count() == 2")
+        .Select('lambda e5: e5.pt()')
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+# def test_two_maps_in_filter():
+#     assert False

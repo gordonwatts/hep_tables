@@ -4,7 +4,7 @@ import ast
 import re
 
 from hep_tables.utils import new_var_name, _index_text_tuple
-from typing import Type, List
+from typing import Type, List, Tuple
 
 from func_adl import ObjectStream
 
@@ -27,9 +27,9 @@ class _monad_manager:
         return v
 
     def __init__(self):
-        self._monads = []
+        self._monads: List[Tuple[str, str]] = []
         self._previous_statement_monad = False
-        self._monad_ref = None
+        self._monad_ref: List[str] = []
 
     def add_monad(self, var_name: str, monad: str) -> int:
         '''
@@ -59,8 +59,8 @@ class _monad_manager:
             var_name_replacement = _index_text_tuple(var_name, 0)
             main_func = main_func.replace(var_name, var_name_replacement)
 
-            if self._monad_ref is not None:
-                monad_references = re.findall(f'{self._monad_ref}\\[[0-9]+\\]', main_func)
+            for mr in self._monad_ref:
+                monad_references = re.findall(f'{mr}\\[[0-9]+\\]', main_func)
                 for m in monad_references:
                     index_match = re.findall('\\[([0-9]+)\\]', m)
                     assert len(index_match) == 1
@@ -105,7 +105,7 @@ class _monad_manager:
         '''
         The statements may contain monads - substitute their references
         '''
-        self._monad_ref = monad_subst_string
+        self._monad_ref.append(monad_subst_string)
 
     def has_monads(self) -> bool:
         '''
@@ -118,9 +118,10 @@ class term_info:
     '''
     A term in an expression. Track all the info associated with it.
     '''
-    def __init__(self, term: str, t: Type):
+    def __init__(self, term: str, t: Type, monad_refs: List[str] = []):
         self.term = term
         self.type = t
+        self.monad_refs = monad_refs
 
 
 class statement_base:
@@ -194,6 +195,9 @@ class statement_select(_monad_manager, statement_base):
     '''
     def __init__(self, ast_rep: ast.AST, rep_type: Type, var_name: str,
                  function_text: str, is_sequence_of_objects: bool):
+        '''
+        Creates a select statement.
+        '''
         statement_base.__init__(self, ast_rep, rep_type)
         _monad_manager.__init__(self)
         self._iterator = var_name
@@ -215,16 +219,20 @@ class statement_select(_monad_manager, statement_base):
         return seq.Select(lambda_text)
 
     def apply_as_function(self, var_name: term_info) -> term_info:
+        # Pass all monad referces forward, we do not resolve them.
+        monad_refs = self._monad_ref
+        self._monad_ref = []
         if self._act_on_sequence:
             inner_var = new_var_name()
             inner_expr = self._func.replace(self._iterator, inner_var)
             expr = self.render(var_name.term,
                                f'{var_name.term}.Select(lambda {inner_var}: {inner_expr})')
-            return term_info(expr, self.rep_type)
+            return term_info(expr, self.rep_type, monad_refs + var_name.monad_refs)
         else:
             return term_info(self.render(var_name.term,
                              self._func.replace(self._iterator, var_name.term)),
-                             self.rep_type)
+                             self.rep_type,
+                             monad_refs)
 
 
 class statement_where(_monad_manager, statement_base):
@@ -235,13 +243,17 @@ class statement_where(_monad_manager, statement_base):
             df -> df.Select(lambda e1: e1.Where(lambda e2: e2.jets()))
     '''
     def __init__(self, ast_rep: ast.AST, rep_type: Type, var_name: str,
-                 function_text: str, is_sequence_of_objects: bool):
+                 function_term: term_info, is_sequence_of_objects: bool):
         statement_base.__init__(self, ast_rep, rep_type)
         _monad_manager.__init__(self)
 
         self._iterator = var_name
-        self._func = function_text
+        self._func_term = function_term
         self._act_on_sequence = is_sequence_of_objects
+
+        for t in self._func_term.monad_refs:
+            self.set_monad_ref(t)
+            self.prev_statement_is_monad()
 
     def apply(self, seq: object) -> ObjectStream:
         # Build the lambda
@@ -249,11 +261,11 @@ class statement_where(_monad_manager, statement_base):
         if self._act_on_sequence:
             outter_var_name = new_var_name()
             full_where_tuple = self.render(
-                outter_var_name, f'{outter_var_name}.Where(lambda {self._iterator}: {self._func})')
+                outter_var_name, f'{outter_var_name}.Where(lambda {self._iterator}: {self._func_term.term})')
             lambda_text = f'lambda {outter_var_name}: {full_where_tuple}'
             return seq.Select(lambda_text)
         else:
-            lambda_text = f'lambda {self._iterator}: {self.render(self._iterator, self._func)}'
+            lambda_text = f'lambda {self._iterator}: {self.render(self._iterator, self._func_term.term)}'
             return seq.Where(lambda_text)
 
 
