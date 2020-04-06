@@ -13,6 +13,11 @@ from .statements import (
 from .utils import _find_root_expr, new_var_name, to_args_from_keywords
 
 
+class RenderException(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self, msg)
+
+
 class _ast_VarRef(ast.AST):
     'An internal AST when we want to replace an ast with a variable reference inline'
     def __init__(self, name: str, t: Type):
@@ -242,8 +247,11 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         root_expr = _find_root_expr(expr, self.sequence._ast)
         if root_expr is self.sequence._ast:
             # Just continuing on with the sequence already in place.
-            assert self.sequence.rep_type is List[object], "Cannot map on an object"
-            self.visit(expr)
+            s, t = _render_expression(self.sequence, expr, self.context, self)
+            assert t.term == 'main_sequence'
+            if len(s) > 0:
+                self.statements += s
+                self.sequence = s[-1]
 
         else:
             monad_index = self.carry_monad_forward(root_expr)
@@ -329,6 +337,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 working_on_sequence = False
         else:
             if input_type is List[object]:
+                raise RenderException(f'The method "{name_of_method}" requires a list of ojects'
+                                      "as input, but it is against a single object.")
                 assert False, 'Do not know how to turn a single object into a list'
 
         # Finally, build the map statement, and then update the current sequence.
