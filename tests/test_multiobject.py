@@ -20,9 +20,24 @@ def test_combine_noop(good_transform_request, reduce_wait_time, files_back_1):
     assert clean_linq(json['selection']) == txt
 
 
-def test_combine_leaf(good_transform_request, reduce_wait_time, files_back_1):
+def test_combine_leaf_lambda(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df.jets.map(lambda j: j.pt)
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_combine_leaf_func(good_transform_request, reduce_wait_time, files_back_1):
+    def aspt(j):
+        return j.pt
+    df = xaod_table(f)
+    seq = df.jets.map(aspt)
     make_local(seq)
     json = good_transform_request
     txt = translate_linq(
