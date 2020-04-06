@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Code to implement statments that will build up the LINQ query, a bit at a time.
 import ast
 import re
@@ -12,9 +13,23 @@ class _monad_manager:
     '''
     A mixin to help track monads as they are needed by statements that support them.
     '''
+
+    monad_index: int = 0
+
+    @classmethod
+    def new_monad_ref(cls: _monad_manager):
+        '''
+        Return a new, unique, string that can be used as a monad reference
+        '''
+        assert cls.monad_index < 1000
+        v = f'<mr-{cls.monad_index:03d}>'
+        cls.monad_index += 1
+        return v
+
     def __init__(self):
         self._monads = []
         self._previous_statement_monad = False
+        self._monad_ref = None
 
     def add_monad(self, var_name: str, monad: str) -> int:
         '''
@@ -43,14 +58,15 @@ class _monad_manager:
         if self._previous_statement_monad:
             var_name_replacement = _index_text_tuple(var_name, 0)
             main_func = main_func.replace(var_name, var_name_replacement)
-            monad_references = re.findall('<monad-ref>\\[[0-9]+\\]', main_func)
-            for m in monad_references:
-                index_match = re.findall('\\[([0-9]+)\\]', m)
-                assert len(index_match) == 1
-                index = int(index_match[0])
-                replace_string = _index_text_tuple(var_name, index)
-                main_func = main_func.replace(m, replace_string)
-            # main_func = main_func.replace('<monad-ref>', var_name)
+
+            if self._monad_ref is not None:
+                monad_references = re.findall(f'{self._monad_ref}\\[[0-9]+\\]', main_func)
+                for m in monad_references:
+                    index_match = re.findall('\\[([0-9]+)\\]', m)
+                    assert len(index_match) == 1
+                    index = int(index_match[0])
+                    replace_string = _index_text_tuple(var_name, index)
+                    main_func = main_func.replace(m, replace_string)
 
         if len(self._monads) == 0:
             return main_func
@@ -85,6 +101,27 @@ class _monad_manager:
         '''
         self._previous_statement_monad = True
 
+    def set_monad_ref(self, monad_subst_string: str):
+        '''
+        The statements may contain monads - substitute their references
+        '''
+        self._monad_ref = monad_subst_string
+
+    def has_monads(self) -> bool:
+        '''
+        Return ture if there is a monad being carried along.
+        '''
+        return len(self._monads) > 0
+
+
+class term_info:
+    '''
+    A term in an expression. Track all the info associated with it.
+    '''
+    def __init__(self, term: str, t: Type):
+        self.term = term
+        self.type = t
+
 
 class statement_base:
     '''
@@ -97,10 +134,10 @@ class statement_base:
     def apply(self, stream: object) -> object:
         assert False, 'This should be overridden'
 
-    def apply_as_text(self, var_name: str) -> str:
-        assert False, 'This should be overriden'
+    # def apply_as_text(self, var_name: str) -> str:
+    #     assert False, 'This should be overriden'
 
-    def apply_as_function(self, var_name: str) -> str:
+    def apply_as_function(self, stem: term_info) -> term_info:
         assert False, 'This should be overriden'
 
     def add_monad(self, var_name: str, monad: str) -> int:
@@ -110,6 +147,9 @@ class statement_base:
     def carry_monad_forward(self, index: int) -> int:
         'Carry a monad forward to this statement'
         assert False, 'This should be overridden'
+
+    def has_monads(self) -> bool:
+        assert False, 'this should be overridden'
 
 
 class statement_unwrap_list(statement_base):
@@ -174,27 +214,17 @@ class statement_select(_monad_manager, statement_base):
 
         return seq.Select(lambda_text)
 
-    def apply_as_text(self, var_name: str) -> str:
-        # BUild the lambda, but all in text
-        if self._act_on_sequence:
-            outter_var_name = new_var_name()
-            inner_func = self.render(outter_var_name, f'{outter_var_name}'
-                                     f'.Select(lambda {self._iterator}: {self._func})')
-            lambda_text = f'lambda {outter_var_name}: {inner_func}'
-        else:
-            inner_func = self.render(self._iterator, self._func)
-            lambda_text = f'lambda {self._iterator}: {inner_func}'
-
-        return f'{var_name}.Select({lambda_text})'
-
-    def apply_as_function(self, var_name: str) -> str:
+    def apply_as_function(self, var_name: term_info) -> term_info:
         if self._act_on_sequence:
             inner_var = new_var_name()
             inner_expr = self._func.replace(self._iterator, inner_var)
-            expr = self.render(var_name, f'{var_name}.Select(lambda {inner_var}: {inner_expr})')
-            return expr
+            expr = self.render(var_name.term,
+                               f'{var_name.term}.Select(lambda {inner_var}: {inner_expr})')
+            return term_info(expr, self.rep_type)
         else:
-            return self.render(var_name, self._func.replace(self._iterator, var_name))
+            return term_info(self.render(var_name.term,
+                             self._func.replace(self._iterator, var_name.term)),
+                             self.rep_type)
 
 
 class statement_where(_monad_manager, statement_base):

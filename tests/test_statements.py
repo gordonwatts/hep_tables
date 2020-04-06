@@ -5,7 +5,7 @@ from func_adl import ObjectStream
 import pytest
 
 from hep_tables.statements import (
-    _monad_manager, statement_select, statement_where)
+    _monad_manager, statement_select, statement_where, term_info)
 
 from .utils_for_testing import f, reset_var_counter  # NOQA
 
@@ -65,12 +65,26 @@ def test_monad_render_with_monad():
 def test_monad_reference_prev():
     m = _monad_manager()
     m.prev_statement_is_monad()
+    assert m.render('e1', 'e1.jets(<monad-ref>[1])') == 'e1[0].jets(<monad-ref>[1])'
+
+
+def test_monad_reference_prev_with_monad():
+    m = _monad_manager()
+    m.prev_statement_is_monad()
+    m.set_monad_ref('<monad-ref>')
     assert m.render('e1', 'e1.jets(<monad-ref>[1])') == 'e1[0].jets(e1[1])'
 
 
 def test_monad_reference_prev_of_monad():
     m = _monad_manager()
     m.prev_statement_is_monad()
+    assert m.render('(e1,e2)', '<monad-ref>[1].jets()') == '<monad-ref>[1].jets()'
+
+
+def test_monad_reference_prev_of_monad_with_monad():
+    m = _monad_manager()
+    m.prev_statement_is_monad()
+    m.set_monad_ref('<monad-ref>')
     assert m.render('(e1,e2)', '<monad-ref>[1].jets()') == 'e2.jets()'
 
 
@@ -206,78 +220,14 @@ def test_select_obj_apply_monad_seq(object_stream):
         'lambda e1: (e1.Select(lambda eb: eb.pt()), e1.jets())')
 
 
-def test_select_obj_apply_txt_notseq():
-    a = ast.Num(n=10)
-    rep_type = List[int]
-
-    w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
-
-    r = w.apply_as_text('e5')
-    assert r == 'e5.Select(lambda eb: eb.pt())'
-
-
-def test_select_obj_apply_txt_seq():
-    a = ast.Num(n=10)
-    rep_type = List[int]
-
-    w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
-
-    r = w.apply_as_text('e5')
-    assert r == 'e5.Select(lambda e1: e1.Select(lambda eb: eb.pt()))'
-
-
-def test_select_obj_apply_txt_notseq_prev_monad():
-    a = ast.Num(n=10)
-    rep_type = List[int]
-
-    w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
-    w.prev_statement_is_monad()
-
-    r = w.apply_as_text('e5')
-    assert r == 'e5.Select(lambda eb: eb[0].pt())'
-
-
-def test_select_obj_apply_txt_seq_prev_monad():
-    a = ast.Num(n=10)
-    rep_type = List[int]
-
-    w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
-    w.prev_statement_is_monad()
-
-    r = w.apply_as_text('e5')
-    assert r == 'e5.Select(lambda e1: e1[0].Select(lambda eb: eb.pt()))'
-
-
-def test_select_obj_apply_txt_monad_notseq():
-    a = ast.Num(n=10)
-    rep_type = List[int]
-
-    w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
-    w.add_monad('em', 'em.jets()')
-
-    r = w.apply_as_text('e5')
-    assert r == 'e5.Select(lambda eb: (eb.pt(), eb.jets()))'
-
-
-def test_select_obj_apply_txt_monad_seq():
-    a = ast.Num(n=10)
-    rep_type = List[int]
-
-    w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
-    w.add_monad('em', 'em.jets()')
-
-    r = w.apply_as_text('e5')
-    assert r == 'e5.Select(lambda e1: (e1.Select(lambda eb: eb.pt()), e1.jets()))'
-
-
 def test_select_obj_apply_func_txt_notseq():
     a = ast.Num(n=10)
     rep_type = List[int]
 
     w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
 
-    r = w.apply_as_function('e5')
-    assert r == 'e5.pt()'
+    r = w.apply_as_function(term_info('e5', object))
+    assert r.term == 'e5.pt()'
 
 
 def test_select_obj_apply_func_txt_seq():
@@ -286,8 +236,8 @@ def test_select_obj_apply_func_txt_seq():
 
     w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
 
-    r = w.apply_as_function('e5')
-    assert r == 'e5.Select(lambda e1: e1.pt())'
+    r = w.apply_as_function(term_info('e5', object))
+    assert r.term == 'e5.Select(lambda e1: e1.pt())'
 
 
 def test_select_obj_apply_func_txt_notseq_prev_monad():
@@ -297,8 +247,8 @@ def test_select_obj_apply_func_txt_notseq_prev_monad():
     w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
     w.prev_statement_is_monad()
 
-    r = w.apply_as_function('e5')
-    assert r == 'e5[0].pt()'
+    r = w.apply_as_function(term_info('e5', object))
+    assert r.term == 'e5[0].pt()'
 
 
 def test_select_obj_apply_func_txt_seq_prev_monad():
@@ -308,8 +258,8 @@ def test_select_obj_apply_func_txt_seq_prev_monad():
     w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
     w.prev_statement_is_monad()
 
-    r = w.apply_as_function('e5')
-    assert r == 'e5[0].Select(lambda e1: e1.pt())'
+    r = w.apply_as_function(term_info('e5', object))
+    assert r.term == 'e5[0].Select(lambda e1: e1.pt())'
 
 
 def test_select_obj_apply_func_txt_monad_notseq():
@@ -319,8 +269,8 @@ def test_select_obj_apply_func_txt_monad_notseq():
     w = statement_select(a, rep_type, 'eb', 'eb.pt()', False)
     w.add_monad('em', 'em.jets()')
 
-    r = w.apply_as_function('e5')
-    assert r == '(e5.pt(), e5.jets())'
+    r = w.apply_as_function(term_info('e5', object))
+    assert r.term == '(e5.pt(), e5.jets())'
 
 
 def test_select_obj_apply_func_txt_monad_seq():
@@ -330,5 +280,13 @@ def test_select_obj_apply_func_txt_monad_seq():
     w = statement_select(a, rep_type, 'eb', 'eb.pt()', True)
     w.add_monad('em', 'em.jets()')
 
-    r = w.apply_as_function('e5')
-    assert r == '(e5.Select(lambda e1: e1.pt()), e5.jets())'
+    r = w.apply_as_function(term_info('e5', object))
+    assert r.term == '(e5.Select(lambda e1: e1.pt()), e5.jets())'
+
+
+def test_monad_ref_generator():
+    m1 = _monad_manager.new_monad_ref()
+    assert len(m1) == 8
+
+    m2 = _monad_manager.new_monad_ref()
+    assert m1 != m2

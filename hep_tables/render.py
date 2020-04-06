@@ -9,7 +9,7 @@ from func_adl_xAOD import use_exe_servicex
 
 from .statements import (
     statement_base, statement_constant, statement_df, statement_select,
-    statement_unwrap_list, statement_where)
+    statement_unwrap_list, statement_where, _monad_manager, term_info)
 from .utils import _find_root_expr, new_var_name, to_args_from_keywords
 
 
@@ -150,6 +150,10 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             st = statement_where(a, self.sequence.rep_type,
                                  var_name, term.term,
                                  self.sequence.rep_type is List[object])
+            # This is a bit of a kudge
+            if len(self.statements) > 0:
+                if self.statements[-1].has_monads():
+                    st.prev_statement_is_monad()
             self.statements.append(st)
             self.sequence = st
 
@@ -226,8 +230,10 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         callable = args[0]
         assert isinstance(callable, ast_Callable)
 
-        # We have to render the callable at this point.
+        # Render the sequence that gets us to what we want to map over.
         self.visit(value)
+
+        # And the thing we want to call we can now render.
         expr = render_callable(callable, self.context, callable.dataframe)
 
         # In that expr there may be captured variables, or references to things that
@@ -235,23 +241,27 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         # them from earlier in the process.
         root_expr = _find_root_expr(expr, self.sequence._ast)
         if root_expr is self.sequence._ast:
+            # Just continuing on with the sequence already in place.
+            assert self.sequence.rep_type is List[object], "Cannot map on an object"
             self.visit(expr)
+
         else:
             monad_index = self.carry_monad_forward(root_expr)
+            monad_ref = _monad_manager.new_monad_ref()
 
             with self.substitute_ast(
-                    root_expr, _ast_VarRef(f'<monad-ref>[{monad_index}]', object)):
+                    root_expr, _ast_VarRef(f'{monad_ref}[{monad_index}]', object)):
                 select_var = new_var_name()
-                with self.substitute_ast(
-                        self.sequence._ast, _ast_VarRef(select_var, object)):
-                    trm = _resolve_expr_inline(statement_unwrap_list(self.sequence._ast,
-                                                                     self.sequence.rep_type),
-                                               expr, self.context, self)
+                seq_as_object = self.sequence if self.sequence.rep_type is object \
+                    else statement_unwrap_list(self.sequence._ast, self.sequence.rep_type)
+                with self.substitute_ast(self.sequence._ast, _ast_VarRef(select_var, object)):
+                    trm = _resolve_expr_inline(seq_as_object, expr, self.context, self)
 
             st = statement_select(a, List[object],
                                   select_var, trm.term,
                                   self.sequence.rep_type is List[object])
             st.prev_statement_is_monad()
+            st.set_monad_ref(monad_ref)
             self.statements.append(st)
             self.sequence = st
 
@@ -327,12 +337,6 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         self.sequence = select
 
 
-class term_info:
-    def __init__(self, term: str, t: Type):
-        self.term = term
-        self.type = t
-
-
 def _render_expression(current_sequence: statement_base, a: ast.AST,
                        context: render_context, p_tracker: Optional[_statement_tracker]) \
         -> Tuple[List[statement_base], term_info]:
@@ -378,9 +382,10 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             assert (len(s_right) == 0 or s_right[-1].rep_type is not List[object]) \
                 or (len(s_left) == 0 or s_left[-1].rep_type is not List[object])
 
-            def do_statements(s: List[statement_base], t: term_info, var_name: str):
+            def do_statements(s: List[statement_base], t: term_info, var_name: term_info) \
+                    -> term_info:
                 if t.term != 'main_sequence':
-                    return t.term
+                    return t
                 if len(s) == 0:
                     return var_name
                 if s[-1].rep_type is not List[object]:
@@ -395,20 +400,18 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                     self.sequence = s[-1]
                     return var_name
 
-            var_name = new_var_name()
+            var_name = term_info(new_var_name(), object)
             l_l = do_statements(s_left, left, var_name)
             l_r = do_statements(s_right, right, var_name)
 
             # Is the compare between two "terms" we know, or a sequence?
             op = _known_operators[type(operator)]
             if left.term != 'main_sequence' and right.term != 'main_sequence':
-                self.term_stack.append(term_info(f'({l_l} {op} {l_r})', left.type))
+                self.term_stack.append(term_info(f'({l_l.term} {op} {l_r.term})', left.type))
             else:
-                l_l = l_l if l_l is not None else var_name
-                l_r = l_r if l_r is not None else var_name
-                expr = f'({l_l} {op} {l_r})'
+                expr = f'({l_l.term} {op} {l_r.term})'
                 rep_type = self.sequence.rep_type
-                self.statements.append(statement_select(a, bool, var_name, expr,
+                self.statements.append(statement_select(a, bool, var_name.term, expr,
                                                         rep_type is List[object]))
                 self.term_stack.append(term_info('main_sequence', List[bool]))
 
@@ -575,12 +578,13 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
         # If we have to create a new variable here, then probably somethign has gone wrong.
         a_resolved = p_tracker.lookup_ast(curret_sequence._ast)
         assert (a_resolved is not None) \
-            or (filter_sequence[0].apply_as_function('bogus').find('bogus') < 0)
+            or (filter_sequence[0]
+                .apply_as_function(term_info('bogus', object)).term.find('bogus') < 0)
         assert a_resolved is None or isinstance(a_resolved, _ast_VarRef)
-        stem = 'bogus' if a_resolved is None else a_resolved.name
+        stem = term_info('bogus' if a_resolved is None else a_resolved.name, object)
         for s in filter_sequence:
             stem = s.apply_as_function(stem)
-        return term_info(stem, filter_sequence[-1].rep_type)
+        return stem
     else:
         return trm
 
