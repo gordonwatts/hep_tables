@@ -2,9 +2,10 @@ import pytest
 
 from hep_tables import make_local, xaod_table, RenderException
 
-from .utils_for_testing import f, reduce_wait_time, reset_var_counter
-from .utils_for_testing import files_back_1, good_transform_request
+from .utils_for_testing import f, reduce_wait_time, reset_var_counter  # NOQA
+from .utils_for_testing import files_back_1, good_transform_request  # NOQA
 from .utils_for_testing import clean_linq, translate_linq
+
 
 def test_combine_noop(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
@@ -149,7 +150,8 @@ def test_map_in_filter(good_transform_request, reduce_wait_time, files_back_1):
     txt = translate_linq(
         f
         .Select("lambda e1: (e1.mcs(), e1)")
-        .Select("lambda e2: e2[0].Where(lambda e3: e2[1].jets().Select(lambda e4: e4.pt()).Count() == 2)")
+        .Select("lambda e2: e2[0].Where(lambda e3: e2[1].jets()"
+                ".Select(lambda e4: e4.pt()).Count() == 2)")
         .Select('lambda e5: e5.Select(lambda e6: e6.pt())')
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
