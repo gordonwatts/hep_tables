@@ -266,8 +266,8 @@ class statement_where(_monad_manager, statement_base):
             lambda_text = f'lambda {outter_var_name}: {full_where_tuple}'
             return seq.Select(lambda_text)
         else:
-            lambda_text = f'lambda {self._iterator}: '
-            f'{self.render(self._iterator, self._func_term.term)}'
+            lambda_text = f'lambda {self._iterator}: ' \
+                f'{self.render(self._iterator, self._func_term.term)}'
             return seq.Where(lambda_text)
 
 
