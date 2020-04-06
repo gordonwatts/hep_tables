@@ -131,7 +131,6 @@ def test_pt_add(good_transform_request, reduce_wait_time, files_back_1):
 
 
 def test_pt_sub(good_transform_request, reduce_wait_time, files_back_1):
-    'Do this with the actual call we need in ATLAS'
     df = xaod_table(f)
     seq = df.jets.pt - 1000.0
     make_local(seq)
@@ -140,6 +139,19 @@ def test_pt_sub(good_transform_request, reduce_wait_time, files_back_1):
                          .Select("lambda e1: e1.jets()")
                          .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
                          .Select("lambda e5: e5.Select(lambda e3: e3 - 1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_pt_good(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.pt > 1000.0
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
+                         .Select("lambda e5: e5.Select(lambda e3: e3 > 1000.0)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
 
@@ -158,8 +170,8 @@ def test_jet_pt_filter_pts_gt(good_transform_request, reduce_wait_time, files_ba
 
 
 def test_filter_lambda(good_transform_request, reduce_wait_time, files_back_1):
-    def good_jet(j):
-        return j.pt > 30
+    def good_jet(pt):
+        return pt > 30.0
 
     df = xaod_table(f)
     seq = df.jets.pt[good_jet]
