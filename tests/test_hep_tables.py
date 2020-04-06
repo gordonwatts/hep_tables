@@ -157,6 +157,22 @@ def test_jet_pt_filter_pts_gt(good_transform_request, reduce_wait_time, files_ba
     assert clean_linq(json['selection']) == txt
 
 
+def test_filter_lambda(good_transform_request, reduce_wait_time, files_back_1):
+    def good_jet(j):
+        return j.pt > 30
+
+    df = xaod_table(f)
+    seq = df.jets.pt[good_jet]
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e5: e5.Select(lambda e2: e2.pt())")
+                         .Select("lambda e6: e6.Where(lambda e3: e3 > 30.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_filter_and_divide(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df.jets.pt[df.jets.pt > 30.0] / 1000.0
