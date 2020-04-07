@@ -42,6 +42,7 @@ def make_local(df: DataFrame) -> Any:
     # mapper.visit(expression)
 
     statements, term = _render_expression(base_statement, expression, context, None)
+    assert term.term == 'main_sequence'
 
     # Render the expression to a LINQ expression.
     # We start with the dataframe.
