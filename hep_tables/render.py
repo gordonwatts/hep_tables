@@ -366,7 +366,6 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             if input_type is List[object]:
                 raise RenderException(f'The method "{name_of_method}" requires a list of ojects'
                                       "as input, but it is against a single object.")
-                assert False, 'Do not know how to turn a single object into a list'
 
         # Finally, build the map statement, and then update the current sequence.
         select = statement_select(a, result_type, iterator_name, expr, working_on_sequence)
