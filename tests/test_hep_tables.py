@@ -369,6 +369,35 @@ def test_count_at_eventLevel(good_transform_request, reduce_wait_time, files_bac
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
 
+
+def test_first_at_object_level(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.First().pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e5: e5.jets()")
+        .Select("lambda e7: e7.First()")
+        .Select("lambda e8: e8.pt()")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_first_at_leaf_level(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.pt.First()
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e5: e5.jets()")
+        .Select("lambda e7: e7.Select(lambda e4: e4.pt())")
+        .Select("lambda e9: e9.First()")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 # def test_count_in_nested_filter(good_transform_request, reduce_wait_time, files_back_1):
 #     df = xaod_table(f)
 #     seq1 = df.jets[df.jets.pt > 20000.0]
