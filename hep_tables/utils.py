@@ -60,7 +60,7 @@ def to_args_from_keywords(kws: List[ast.keyword]) -> Dict[str, Optional[object]]
     return {k.arg: to_object(k.value) for k in kws if isinstance(k.arg, str)}
 
 
-def _find_root_expr(expr: ast.AST, possible_root: ast.AST) -> ast.AST:
+def _find_root_expr(expr: ast.AST, possible_root: ast.AST) -> Optional[ast.AST]:
     '''
     Look to see if we can find the root expression for this ast. It will either be `a` or
     it will be an `ast_DataFrame` - return whichever one it is.
@@ -100,7 +100,6 @@ def _find_root_expr(expr: ast.AST, possible_root: ast.AST) -> ast.AST:
 
     r = root_finder(possible_root)
     r.visit(expr)
-    assert r.found is not None, 'Internal coding error - every expr should have a root'
     return r.found
 
 

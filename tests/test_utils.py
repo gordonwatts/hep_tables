@@ -53,6 +53,14 @@ def test_find_root_ast_df_simple():
     assert r is a
 
 
+def test_find_root_no_root():
+    df = xaod_table(f)
+    a = ast_DataFrame(df)
+
+    r = _find_root_expr(ast.Num(n=10, ctx=ast.Load()), a)
+    assert r is None
+
+
 def test_find_root_ast():
     df = xaod_table(f)
     a = ast_DataFrame(df)

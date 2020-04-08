@@ -280,7 +280,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 self.statements += s
                 self.sequence = s[-1]
 
-        else:
+        elif root_expr is not None:
             monad_index = self.carry_monad_forward(root_expr)
             monad_ref = _monad_manager.new_monad_ref()
 
@@ -301,6 +301,19 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             self.sequence = st
 
             # TODO: pull this stuff above out - it is common!
+
+        else:
+            # If root_expr is none, then whatever it is is a constant. So just select it.
+            s, t = _render_expression(self.sequence, expr, self.context, self)
+            if len(s) > 0:
+                assert t.term == 'main_sequence'
+                self.statements += s
+                self.sequence = s[-1]
+            else:
+                st = statement_select(a, List[object], new_var_name(), t.term,
+                                      self.sequence.rep_type is List[object])
+            self.statements.append(st)
+            self.sequence = st
 
     def visit_Call(self, a: ast.Call):
         # Math function calls are treated like expressions
@@ -627,13 +640,13 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
 
 
 _known_types = {
-    'jets': (object, List[object]),
     'Jets': (object, List[object]),
     'Electrons': (object, List[object]),
     'TruthParticles': (object, List[object]),
     'Count': (List[object], object),
     'First': (List[object], object),
     'tracks': (object, List[object]),
+    'jets': (object, List[object]),
     'mcs': (object, List[object]),
 }
 
