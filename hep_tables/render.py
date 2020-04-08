@@ -1,7 +1,7 @@
 from __future__ import annotations
 import ast
-from typing import Dict, List, Optional, Tuple, Type, Callable
 import inspect
+from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from dataframe_expressions import (
     ast_Callable, ast_DataFrame, ast_Filter, ast_FunctionPlaceholder,
@@ -9,8 +9,8 @@ from dataframe_expressions import (
 from func_adl_xAOD import use_exe_servicex
 
 from .statements import (
-    statement_base, statement_constant, statement_df, statement_select,
-    statement_unwrap_list, statement_where, _monad_manager, term_info)
+    _monad_manager, statement_base, statement_constant, statement_df,
+    statement_select, statement_unwrap_list, statement_where, term_info)
 from .utils import _find_root_expr, new_var_name, to_args_from_keywords
 
 
@@ -203,7 +203,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 'Internal programming error - cannot deal with statements and term'
             vn = new_var_name()
             st_select = statement_select(a.value, term.type, vn,
-                                         term.term, term.type is List[object])
+                                         term, term.type is List[object])
             self.statements.append(st_select)
             self.sequence = st_select
 
@@ -293,7 +293,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                     trm = _resolve_expr_inline(seq_as_object, expr, self.context, self)
 
             st = statement_select(a, List[object],
-                                  select_var, trm.term,
+                                  select_var, trm,
                                   self.sequence.rep_type is List[object])
             st.prev_statement_is_monad()
             st.set_monad_ref(monad_ref)
@@ -310,10 +310,10 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 self.statements += s
                 self.sequence = s[-1]
             else:
-                st = statement_select(a, List[object], new_var_name(), t.term,
+                st = statement_select(a, List[object], new_var_name(), t,
                                       self.sequence.rep_type is List[object])
-            self.statements.append(st)
-            self.sequence = st
+                self.statements.append(st)
+                self.sequence = st
 
     def visit_Call(self, a: ast.Call):
         # Math function calls are treated like expressions
@@ -348,7 +348,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             args = ', '.join(t.term for t in resolved_args)
 
             st = statement_select(a, object, var_name,
-                                  f'{name}({args})', self.sequence.rep_type is List[object])
+                                  term_info(f'{name}({args})', object),
+                                  self.sequence.rep_type is List[object])
             self.statements.append(st)
             self.sequence = st
         else:
@@ -381,7 +382,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                                       "as input, but it is against a single object.")
 
         # Finally, build the map statement, and then update the current sequence.
-        select = statement_select(a, result_type, iterator_name, expr, working_on_sequence)
+        select = statement_select(a, result_type, iterator_name, term_info(expr, object),
+                                  working_on_sequence)
         self.statements.append(select)
         self.sequence = select
 
@@ -460,7 +462,8 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             else:
                 expr = f'({l_l.term} {op} {l_r.term})'
                 rep_type = self.sequence.rep_type
-                self.statements.append(statement_select(a, bool, var_name.term, expr,
+                self.statements.append(statement_select(a, bool, var_name.term,
+                                                        term_info(expr, object),
                                                         rep_type is List[object]))
                 self.term_stack.append(term_info('main_sequence', List[bool]))
 
@@ -490,7 +493,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 right = _resolve_expr_inline(self.sequence, a.values[1], self.context, self)
 
             expr = f'({left.term}) {_known_operators[type(a.op)]} ({right.term})'
-            st = statement_select(a, bool, var_name, expr, False)
+            st = statement_select(a, bool, var_name, term_info(expr, object), False)
             self.statements.append(st)
             self.sequence = st
             self.term_stack.append(term_info('main_sequence', List[object]))
@@ -557,7 +560,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                         var_name = new_var_name()
                         expr = f'({_known_simple_math_functions[a.func.attr]}({var_name}))'
                         self.statements.append(
-                            statement_select(a, object, var_name, expr,
+                            statement_select(a, object, var_name, term_info(expr, object),
                                              self.sequence.rep_type is List[object]))
                         self.term_stack.append(term_info('main_sequence', List[float]))
             else:

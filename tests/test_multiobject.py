@@ -1,10 +1,10 @@
 import pytest
 
-from hep_tables import make_local, xaod_table, RenderException, curry
+from hep_tables import RenderException, curry, make_local, xaod_table
 
-from .utils_for_testing import f, reduce_wait_time, reset_var_counter  # NOQA
-from .utils_for_testing import files_back_1, good_transform_request  # NOQA
-from .utils_for_testing import clean_linq, translate_linq
+from .utils_for_testing import (
+    clean_linq, f, files_back_1, good_transform_request, reduce_wait_time,
+    reset_var_counter, translate_linq)
 
 
 def test_combine_noop(good_transform_request, reduce_wait_time, files_back_1):
@@ -212,6 +212,24 @@ def test_map_in_filter_passthrough(good_transform_request, reduce_wait_time, fil
     assert clean_linq(json['selection']) == txt
 
 
+def test_map_with_filter_inside(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    mcs = df.mcs
+    jets = df.jets[df.jets.pt > 30]
+
+    pt_total = mcs.map(lambda mc: jets.map(lambda j: 1.0))
+    make_local(pt_total)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.mcs(), e1)")
+        .Select("lambda e2: e2[0]"
+                ".Select(lambda e3: e2[1].jets()"
+                ".Where(lambda e4: e4.pt() > 30).Select(lambda e5: 1.0))")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_map_with_const(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     mcs = df.mcs
@@ -243,7 +261,3 @@ def test_map_in_repeat_root_filter(good_transform_request, reduce_wait_time, fil
         make_local(seq)
 
     assert str(e.value).find('list of ojects') != -1
-
-
-# def test_two_maps_in_filter():
-#     assert False
