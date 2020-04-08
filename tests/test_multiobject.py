@@ -212,6 +212,22 @@ def test_map_in_filter_passthrough(good_transform_request, reduce_wait_time, fil
     assert clean_linq(json['selection']) == txt
 
 
+def test_map_with_const(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    mcs = df.mcs
+
+    pt_total = mcs.map(lambda mc: 1.0)
+    make_local(pt_total)
+
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.mcs()")
+        .Select("lambda e2: e2.Select(lambda e3: 1.0)")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_map_in_repeat_root_filter(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     # MC particles's pt when they are close to a jet.
