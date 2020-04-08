@@ -630,6 +630,7 @@ _known_types = {
     'jets': (object, List[object]),
     'Jets': (object, List[object]),
     'Electrons': (object, List[object]),
+    'TruthParticles': (object, List[object]),
     'Count': (List[object], object),
     'First': (List[object], object),
     'tracks': (object, List[object]),
