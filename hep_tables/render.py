@@ -575,6 +575,7 @@ _known_operators: Dict[Type, str] = {
     ast.Eq: '==',
     ast.NotEq: '!=',
     ast.And: 'and',
+    ast.Or: 'or',
     }
 
 

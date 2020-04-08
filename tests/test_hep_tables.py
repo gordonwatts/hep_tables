@@ -301,6 +301,20 @@ def test_filter_and(good_transform_request, reduce_wait_time, files_back_1):
     assert clean_linq(json['selection']) == txt
 
 
+def test_filter_or(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets[(df.jets.pt > 30.0) | (df.jets.pt > 40.0)].pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e9: e9.Where(lambda e7: (e7.pt() > 30.0) or (e7.pt() > 40.0))")
+        .Select("lambda e10: e10.Select(lambda e8: e8.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_filter_and_abs(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df.jets[(df.jets.pt > 30.0) & (abs(df.jets.eta) < 2.5)].pt
