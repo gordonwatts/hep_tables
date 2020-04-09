@@ -344,7 +344,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             for t in resolved_args:
                 # We can't deal with arrays as arguments yet.
                 assert t.type is not List[object], \
-                    f'Functions with array arguments are not supported ({name})'
+                    f'Functions with array arguments are not supported ({name}) [{t.term}]'
             args = ', '.join(t.term for t in resolved_args)
 
             st = statement_select(a, object, var_name,

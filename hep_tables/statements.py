@@ -184,6 +184,9 @@ class statement_df(statement_base):
         '''
         assert False, 'this should never be called'
 
+    def __str__(self):
+        return "EventSource"
+
 
 def _render_as_function(s: Union[statement_select, statement_where],
                         var_name: term_info, operation: str) -> term_info:
@@ -225,9 +228,10 @@ class statement_select(_monad_manager, statement_base):
         self._func = function_text
         self._act_on_sequence = is_sequence_of_objects
 
-    def apply(self, seq: object) -> ObjectStream:
-        # Build the lambda
-        assert isinstance(seq, ObjectStream), 'Internal error'
+    def _inner_lambda_text(self) -> str:
+        '''
+        Helper method
+        '''
         if self._act_on_sequence:
             outter_var_name = new_var_name()
             inner_func = self.render(outter_var_name, f'{outter_var_name}'
@@ -236,8 +240,15 @@ class statement_select(_monad_manager, statement_base):
         else:
             inner_func = self.render(self._iterator, self._func.term)
             lambda_text = f'lambda {self._iterator}: {inner_func}'
+        return lambda_text
 
-        return seq.Select(lambda_text)
+    def apply(self, seq: object) -> ObjectStream:
+        # Build the lambda
+        assert isinstance(seq, ObjectStream), 'Internal error'
+        return seq.Select(self._inner_lambda_text())
+
+    def __str__(self):
+        return f'  .Select({self._inner_lambda_text()})'
 
     def apply_as_function(self, var_name: term_info) -> term_info:
         return _render_as_function(self, var_name, 'Select')
@@ -262,24 +273,33 @@ class statement_where(_monad_manager, statement_base):
             self.set_monad_ref(t)
             self.prev_statement_is_monad()
 
-    def apply(self, seq: object) -> ObjectStream:
-        # Build the lambda
-        assert isinstance(seq, ObjectStream), 'Internal error'
+    def _inner_lambda_text(self) -> str:
         if self._act_on_sequence:
             outter_var_name = new_var_name()
             full_where_tuple = self.render(
                 outter_var_name, f'{outter_var_name}.Where(lambda {self._iterator}: '
                 f'{self._func.term})')
             lambda_text = f'lambda {outter_var_name}: {full_where_tuple}'
-            return seq.Select(lambda_text)
+            return lambda_text
         else:
             lambda_text = f'lambda {self._iterator}: ' \
                 f'{self.render(self._iterator, self._func.term)}'
-            return seq.Where(lambda_text)
+            return lambda_text
+
+    def apply(self, seq: object) -> ObjectStream:
+        # Build the lambda
+        assert isinstance(seq, ObjectStream), 'Internal error'
+        if self._act_on_sequence:
+            return seq.Select(self._inner_lambda_text())
+        else:
+            return seq.Where(self._inner_lambda_text())
 
     def apply_as_function(self, var_name: term_info) -> term_info:
         assert self._act_on_sequence, 'Not sure how Where works on single object'
         return _render_as_function(self, var_name, 'Where')
+
+    def __str__(self):
+        return f'  .Where({self._inner_lambda_text()})'
 
 
 class statement_constant(statement_base):
