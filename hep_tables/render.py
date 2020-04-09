@@ -205,7 +205,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 'Internal programming error - cannot deal with statements and term'
             vn = new_var_name()
             st_select = statement_select(a, term.type, vn,
-                                         term, term.type is List[object])
+                                         term, self.sequence.rep_type is List[object])
             self.statements.append(st_select)
             self.sequence = st_select
 
@@ -311,16 +311,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
 
         else:
             # If root_expr is none, then whatever it is is a constant. So just select it.
-            s, t = _render_expression(self.sequence, expr, self.context, self)
-            if len(s) > 0:
-                assert t.term == 'main_sequence'
-                self.statements += s
-                self.sequence = s[-1]
-            else:
-                st = statement_select(a, List[object], new_var_name(), t,
-                                      self.sequence.rep_type is List[object])
-                self.statements.append(st)
-                self.sequence = st
+            self._render_expresion_as_transform(expr)
 
     def visit_Call(self, a: ast.Call):
         # Math function calls are treated like expressions
