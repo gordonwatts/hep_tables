@@ -2,7 +2,7 @@ import pytest
 
 from hep_tables import RenderException, curry, make_local, xaod_table
 
-from .utils_for_testing import (
+from .utils_for_testing import (  # NOQA
     clean_linq, f, files_back_1, good_transform_request, reduce_wait_time,
     reset_var_counter, translate_linq)
 
@@ -230,6 +230,24 @@ def test_map_with_filter_inside(good_transform_request, reduce_wait_time, files_
     assert clean_linq(json['selection']) == txt
 
 
+def test_map_with_filter_inside_call(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    mcs = df.mcs
+    jets = df.jets()[df.jets().pt > 30]
+
+    pt_total = mcs.map(lambda mc: jets.map(lambda j: 1.0))
+    make_local(pt_total)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.mcs(), e1)")
+        .Select("lambda e2: e2[0]"
+                ".Select(lambda e3: e2[1].jets()"
+                ".Where(lambda e4: e4.pt() > 30).Select(lambda e5: 1.0))")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_map_with_const(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     mcs = df.mcs
@@ -261,3 +279,19 @@ def test_map_in_repeat_root_filter(good_transform_request, reduce_wait_time, fil
         make_local(seq)
 
     assert str(e.value).find('list of ojects') != -1
+
+
+def test_capture_inside_with_call(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.map(lambda j: df.Electrons().Count())
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.jets(), e1)")
+        .Select("lambda e14: e14[0].Select(lambda e3: "
+                "e14[1]"
+                ".Electrons()"
+                ".Count())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt

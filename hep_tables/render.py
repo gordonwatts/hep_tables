@@ -189,10 +189,12 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             self.statements.append(st)
             self.sequence = st
 
-    def visit_Attribute(self, a: ast.Attribute):
-        # Get the stream up to the base expressoin.
-        # if a.value is not self.sequence._ast:
-        statements, term = _render_expression(self.sequence, a.value, self.context, self)
+    def _render_expresion_as_transform(self, a: ast.AST):
+        '''
+        Render an expression and add into the sequence. If this turns out to be a term,
+        then as a select.
+        '''
+        statements, term = _render_expression(self.sequence, a, self.context, self)
 
         if term.term == 'main_sequence':
             if len(statements) > 0:
@@ -202,10 +204,15 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             assert len(statements) == 0, \
                 'Internal programming error - cannot deal with statements and term'
             vn = new_var_name()
-            st_select = statement_select(a.value, term.type, vn,
+            st_select = statement_select(a, term.type, vn,
                                          term, term.type is List[object])
             self.statements.append(st_select)
             self.sequence = st_select
+
+    def visit_Attribute(self, a: ast.Attribute):
+        # Get the stream up to the base expressoin.
+        # if a.value is not self.sequence._ast:
+        self._render_expresion_as_transform(a.value)
 
         # Now we need to "select" a level here. This means doing a call.
         name = a.attr
@@ -322,7 +329,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 m = getattr(self, f'visit_call_{a.func.attr}')
                 m(a.func.value, a.args, a.keywords, a)
             else:
-                self.visit(a.func.value)
+                self._render_expresion_as_transform(a.func.value)
+
                 resolved_args = [_resolve_expr_inline(self.sequence, arg, self.context, self)
                                  for arg in a.args]
                 name = a.func.attr

@@ -22,9 +22,37 @@ def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
     assert clean_linq(json['selection']) == txt
 
 
+def test_collect_pts_as_call(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets().pt()
+    a = make_local(seq)
+    assert a is not None
+    assert len(a) == 283458
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_abs_of_data(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = abs(df.jets.pt)
+    a = make_local(seq)
+    assert a is not None
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e4: e4.Select(lambda e2: e2.pt())")
+                         .Select("lambda e5: e5.Select(lambda e3: abs(e3))")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_abs_of_data_with_calls(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = abs(df.jets().pt())
     a = make_local(seq)
     assert a is not None
     json = good_transform_request
@@ -188,6 +216,20 @@ def test_filter_lambda(good_transform_request, reduce_wait_time, files_back_1):
 def test_filter_and_divide(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df.jets.pt[df.jets.pt > 30.0] / 1000.0
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e6: e6.Select(lambda e2: e2.pt())")
+                         .Select("lambda e7: e7.Where(lambda e3: e3 > 30.0)")
+                         .Select("lambda e8: e8.Select(lambda e5: e5 / 1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_filter_and_divide_with_call(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets().pt[df.jets().pt > 30.0] / 1000.0
     make_local(seq)
     json = good_transform_request
     txt = translate_linq(f
