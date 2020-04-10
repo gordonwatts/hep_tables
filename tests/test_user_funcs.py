@@ -37,6 +37,19 @@ def test_user_function_with_map_lambda(good_transform_request, reduce_wait_time,
     assert clean_linq(json['selection']) == txt
 
 
+def test_user_function_with_map_lambda_no_type(good_transform_request, reduce_wait_time, files_back_1):
+    @user_func
+    def tns(e1):
+        assert False, 'this is a fake function and should never be called'
+
+    df = xaod_table(f)
+    seq = df.jets.pt.map(lambda j: tns(j))
+    with pytest.raises(Exception) as e:
+        make_local(seq)
+
+    assert 'hint' in str(e.value)
+
+
 def test_user_function_with_map_func(good_transform_request, reduce_wait_time, files_back_1):
     @user_func
     def tns(e1: float) -> float:

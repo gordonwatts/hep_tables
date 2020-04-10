@@ -287,16 +287,21 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         root_expr = _find_root_expr(expr, self.sequence._ast)
         if root_expr is self.sequence._ast:
             # Just continuing on with the sequence already in place.
-            assert _is_list(self.sequence.rep_type)
-            s, t = _render_expression(
-                statement_unwrap_list(self.sequence._ast, self.sequence.rep_type),
-                expr, self.context, self)
+            assert _is_list(self.sequence.rep_type) \
+                or isinstance(self.sequence, statement_unwrap_list)
+            if _is_list(self.sequence.rep_type):
+                s, t = _render_expression(
+                    statement_unwrap_list(self.sequence._ast, self.sequence.rep_type),
+                    expr, self.context, self)
+            else:
+                s, t = _render_expression(self.sequence, expr, self.context, self)
             assert t.term == 'main_sequence'
             if len(s) > 0:
                 self.statements += s
+                if _is_list(self.sequence.rep_type):
+                    s[-1]._act_on_sequence = True
+                    s[-1].rep_type = List[self.sequence.rep_type]
                 self.sequence = s[-1]
-                self.sequence._act_on_sequence = True
-                self.sequence.rep_type = List[self.sequence.rep_type]
 
         elif root_expr is not None:
             monad_index = self.carry_monad_forward(root_expr)
@@ -352,6 +357,9 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 return _resolve_expr_inline(self.sequence, arg, self.context, self)
 
             name = a.func.callable.__name__
+            return_type = inspect.signature(a.func.callable).return_annotation
+            if return_type is inspect.Signature.empty:
+                raise Exception(f"User Error: Function {name} needs return type python hints.")
 
             with self.substitute_ast(self.sequence._ast,
                                      _ast_VarRef(var_name, self.sequence.rep_type)):
@@ -363,8 +371,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                     f'Functions with array arguments are not supported ({name}) [{t.term}]'
             args = ', '.join(t.term for t in resolved_args)
 
-            st = statement_select(a, object, var_name,
-                                  term_info(f'{name}({args})', object),
+            st = statement_select(a, return_type, var_name,
+                                  term_info(f'{name}({args})', return_type),
                                   _is_list(self.sequence.rep_type))
             self.statements.append(st)
             self.sequence = st
@@ -398,7 +406,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                                       "as input, but it is against a single object.")
 
         # Finally, build the map statement, and then update the current sequence.
-        select = statement_select(a, result_type, iterator_name, term_info(expr, object),
+        select = statement_select(a, result_type, iterator_name, term_info(expr, result_type),
                                   working_on_sequence)
         self.statements.append(select)
         self.sequence = select
@@ -479,7 +487,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 expr = f'({l_l.term} {op} {l_r.term})'
                 rep_type = self.sequence.rep_type
                 self.statements.append(statement_select(a, bool, var_name.term,
-                                                        term_info(expr, object),
+                                                        term_info(expr, bool),
                                                         _is_list(rep_type)))
                 self.term_stack.append(term_info('main_sequence', List[bool]))
 
@@ -504,7 +512,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             'and or'
             assert len(a.values) == 2, 'Cannot do bool operations more than two operands'
             var_name = new_var_name()
-            with self.substitute_ast(self.sequence._ast, _ast_VarRef(var_name, object)):
+            with self.substitute_ast(self.sequence._ast, _ast_VarRef(var_name, self.sequence.rep_type)):
                 left = _resolve_expr_inline(self.sequence, a.values[0], self.context, self)
                 right = _resolve_expr_inline(self.sequence, a.values[1], self.context, self)
 
@@ -667,7 +675,7 @@ _known_types = {
     'Jets': (object, List[object]),
     'Electrons': (object, List[object]),
     'TruthParticles': (object, List[object]),
-    'Count': (List[object], object),
+    'Count': (List[object], int),
     'First': (List[object], object),
     'tracks': (object, List[object]),
     'jets': (object, List[object]),
