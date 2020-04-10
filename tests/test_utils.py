@@ -1,4 +1,5 @@
 import ast
+from typing import List
 
 from dataframe_expressions import ast_DataFrame
 from dataframe_expressions.render import render
@@ -7,7 +8,8 @@ import pytest
 
 from hep_tables import xaod_table
 from hep_tables.utils import (
-    _find_dataframes, _find_root_expr, _index_text_tuple, _parse_elements)
+    _find_dataframes, _find_root_expr, _index_text_tuple, _is_list,
+    _parse_elements, _unwrap_list)
 
 # For use in testing - a mock.
 f = EventDataset('locads://bogus')
@@ -142,6 +144,30 @@ def test_text_tuple_good():
 def test_text_tuple_bad():
     with pytest.raises(Exception):
         _index_text_tuple('(e5,e6)', 2)
+
+
+def test_is_list_list():
+    assert _is_list(List[object])
+
+
+def test_is_list_not_list():
+    assert not _is_list(object)
+
+
+def test_is_list_double_list():
+    assert _is_list(List[List[object]])
+
+
+def test_is_list_not_bool():
+    assert not _is_list(bool)
+
+
+def test_unwrap_list():
+    assert _unwrap_list(List[object]) is object
+
+
+def test_unwrap_list_of_list():
+    assert _unwrap_list(List[List[int]]) is List[int]
 
 # def test_fail_to_find_two_dataframes():
 #     df1 = xaod_table(f)

@@ -1,5 +1,5 @@
 import ast
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Type
 
 from dataframe_expressions import ast_DataFrame
 
@@ -145,3 +145,12 @@ def _index_text_tuple(s: str, index: int) -> str:
         raise Exception(f'Internal Error: attempt to index tuple fail: {s} - index {index}')
 
     return splits[index]
+
+
+def _is_list(t: Type) -> bool:
+    return t.__origin__ is list if not isinstance(t, type) else False
+
+
+def _unwrap_list(t: Type) -> Type:
+    assert _is_list(t)
+    return t.__args__[0]

@@ -1,7 +1,10 @@
+import pytest
+
 from hep_tables import make_local, xaod_table
-from .utils_for_testing import f, reduce_wait_time, reset_var_counter # NOQA
-from .utils_for_testing import files_back_1, good_transform_request # NOQA
-from .utils_for_testing import translate_linq, clean_linq
+
+from .utils_for_testing import f, reduce_wait_time, reset_var_counter  # NOQA
+from .utils_for_testing import files_back_1, good_transform_request  # NOQA
+from .utils_for_testing import clean_linq, translate_linq
 
 
 def test_create_base():
@@ -383,6 +386,15 @@ def test_binop_in_filter(good_transform_request, reduce_wait_time, files_back_1)
         .Select("lambda e8: e8.Select(lambda e6: e6.pt())")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
+
+
+def test_count_of_events():
+    df = xaod_table(f)
+    seq = df.Count()
+    with pytest.raises(Exception) as e:
+        make_local(seq)
+
+    assert 'Count' in str(e.value)
 
 
 def test_count_of_objects(good_transform_request, reduce_wait_time, files_back_1):

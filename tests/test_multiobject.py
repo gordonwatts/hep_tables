@@ -264,6 +264,43 @@ def test_map_with_const(good_transform_request, reduce_wait_time, files_back_1):
     assert clean_linq(json['selection']) == txt
 
 
+def test_map_with_count(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    mcs = df.mcs
+    jets = df.jets
+
+    seq = mcs.map(lambda mc: jets.map(lambda j: j.pt + mc.pt).Count())
+    make_local(seq)
+
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.mcs(), e1)")
+        .Select("lambda e2: e2[0].Select(lambda e3: e2[1].jets()"
+                ".Select(lambda e4: e4.pt() + e3.pt()).Count())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_seq_map_with_count(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    mcs = df.mcs
+    jets = df.jets
+
+    b = mcs.map(lambda mc: jets.map(lambda j: j.pt + mc.pt))
+    seq = b.map(lambda p: p.Count())
+    make_local(seq)
+
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.mcs(), e1)")
+        .Select("lambda e2: e2[0].Select(lambda e3: e2[1].jets().Select(lambda e4: e4.pt() + e3.pt()))")
+        .Select("lambda e5: e5.Select(lambda e6: e6.Count())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_map_in_repeat_root_filter(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     # MC particles's pt when they are close to a jet.

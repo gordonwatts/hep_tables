@@ -6,7 +6,7 @@ from typing import List, Tuple, Type, Union
 
 from func_adl import ObjectStream
 
-from hep_tables.utils import _index_text_tuple, new_var_name
+from hep_tables.utils import _index_text_tuple, new_var_name, _is_list, _unwrap_list
 
 
 class _monad_manager:
@@ -158,8 +158,8 @@ class statement_unwrap_list(statement_base):
     A placeholder statement. Used to unwrap a type
     '''
     def __init__(self, ast_rep: ast.AST, rep_type: Type):
-        assert rep_type is List[object]
-        statement_base.__init__(self, ast_rep, object)
+        assert _is_list(rep_type)
+        statement_base.__init__(self, ast_rep, _unwrap_list(rep_type))
 
 
 class statement_df(statement_base):
