@@ -299,6 +299,9 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             if len(s) > 0:
                 self.statements += s
                 if _is_list(self.sequence.rep_type):
+                    # TODO: Clearly a KLUDGE KLUDGE
+                    assert isinstance(s[-1], statement_select) \
+                        or isinstance(s[-1], statement_where)
                     s[-1]._act_on_sequence = True
                     s[-1].rep_type = List[self.sequence.rep_type]
                 self.sequence = s[-1]
@@ -512,7 +515,8 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             'and or'
             assert len(a.values) == 2, 'Cannot do bool operations more than two operands'
             var_name = new_var_name()
-            with self.substitute_ast(self.sequence._ast, _ast_VarRef(var_name, self.sequence.rep_type)):
+            with self.substitute_ast(self.sequence._ast,
+                                     _ast_VarRef(var_name, self.sequence.rep_type)):
                 left = _resolve_expr_inline(self.sequence, a.values[0], self.context, self)
                 right = _resolve_expr_inline(self.sequence, a.values[1], self.context, self)
 

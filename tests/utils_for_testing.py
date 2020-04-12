@@ -1,15 +1,18 @@
 import ast
-from hep_tables.utils import reset_new_var_counter
-import hep_tables.local as hep_local
 from json import dumps, loads
 import logging
+import os
 import re
 import shutil
+import tempfile
 from unittest import mock
 
 from func_adl import EventDataset
 import pytest
 import servicex.servicex as fe
+
+import hep_tables.local as hep_local
+from hep_tables.utils import reset_new_var_counter
 
 
 # For use in testing - a mock.
@@ -17,6 +20,18 @@ f = EventDataset('locads://bogus')
 
 # dump out logs
 logging.basicConfig(level=logging.NOTSET)
+
+
+@pytest.fixture(autouse=True)
+def delete_default_downloaded_files():
+    download_location = os.path.join(tempfile.gettempdir(), 'servicex-testing')
+    import servicex.utils as sx
+    sx.default_file_cache_name = download_location
+    if os.path.exists(download_location):
+        shutil.rmtree(download_location)
+    yield
+    if os.path.exists(download_location):
+        shutil.rmtree(download_location)
 
 
 @pytest.fixture(autouse=True)

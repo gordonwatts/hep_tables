@@ -4,7 +4,7 @@ from hep_tables import RenderException, curry, make_local, xaod_table
 
 from .utils_for_testing import (  # NOQA
     clean_linq, f, files_back_1, good_transform_request, reduce_wait_time,
-    reset_var_counter, translate_linq)
+    reset_var_counter, translate_linq, delete_default_downloaded_files)
 
 
 def test_combine_noop(good_transform_request, reduce_wait_time, files_back_1):
@@ -295,7 +295,8 @@ def test_seq_map_with_count(good_transform_request, reduce_wait_time, files_back
     txt = translate_linq(
         f
         .Select("lambda e1: (e1.mcs(), e1)")
-        .Select("lambda e2: e2[0].Select(lambda e3: e2[1].jets().Select(lambda e4: e4.pt() + e3.pt()))")
+        .Select("lambda e2: e2[0].Select(lambda e3: e2[1].jets()"
+                ".Select(lambda e4: e4.pt() + e3.pt()))")
         .Select("lambda e5: e5.Select(lambda e6: e6.Count())")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt

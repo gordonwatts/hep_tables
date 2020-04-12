@@ -5,7 +5,7 @@ from hep_tables import make_local, xaod_table
 
 from .utils_for_testing import f, reduce_wait_time, reset_var_counter  # NOQA
 from .utils_for_testing import files_back_1, good_transform_request  # NOQA
-from .utils_for_testing import translate_linq, clean_linq
+from .utils_for_testing import translate_linq, clean_linq, delete_default_downloaded_files  # NOQA
 
 
 def test_user_function_with_implied(good_transform_request, reduce_wait_time, files_back_1):
@@ -37,7 +37,8 @@ def test_user_function_with_map_lambda(good_transform_request, reduce_wait_time,
     assert clean_linq(json['selection']) == txt
 
 
-def test_user_function_with_map_lambda_no_type(good_transform_request, reduce_wait_time, files_back_1):
+def test_user_function_with_map_lambda_no_type(good_transform_request, reduce_wait_time,
+                                               files_back_1):
     @user_func
     def tns(e1):
         assert False, 'this is a fake function and should never be called'
