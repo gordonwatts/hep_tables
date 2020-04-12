@@ -230,6 +230,23 @@ def test_map_with_filter_inside(good_transform_request, reduce_wait_time, files_
     assert clean_linq(json['selection']) == txt
 
 
+def test_map_with_2filters_inside_twice(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+
+    eles = df.Electrons('Electrons')
+    mc_part = df.TruthParticles('TruthParticles')
+    mc_ele = mc_part[mc_part.pdgId == 11]
+    good_mc_ele = mc_ele[mc_ele.ptgev > 20]
+
+    ele_mcs = eles.map(lambda reco_e: good_mc_ele)
+
+    make_local(ele_mcs)
+    json_1 = clean_linq(good_transform_request['selection'])
+    make_local(ele_mcs)
+    json_2 = clean_linq(good_transform_request['selection'])
+
+    assert json_1 == json_2
+
 def test_map_with_filter_inside_call(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     mcs = df.mcs

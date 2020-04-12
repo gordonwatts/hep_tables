@@ -1,10 +1,19 @@
 import pytest
 
 from hep_tables import make_local, xaod_table
+from dataframe_expressions import define_alias
 
 from .utils_for_testing import ( # NOQA
     clean_linq, delete_default_downloaded_files, f, files_back_1,
     good_transform_request, reduce_wait_time, reset_var_counter, translate_linq)
+
+
+@pytest.fixture(autouse=True)
+def reset_var_counter_alias():
+    from dataframe_expressions.alias import _reset_alias_catalog
+    _reset_alias_catalog()
+    yield None
+    _reset_alias_catalog()
 
 
 def test_create_base():
@@ -214,6 +223,31 @@ def test_filter_lambda(good_transform_request, reduce_wait_time, files_back_1):
                          .Select("lambda e6: e6.Where(lambda e3: e3 > 30.0)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
+
+
+def test_filter_chain(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq1 = df.jets[df.jets.pt > 30.0]
+    seq = seq1[seq1.eta < 2.4].pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e6: e6.Where(lambda e3: e3.pt() > 30.0)")
+                         .Select("lambda e7: e7.Where(lambda e4: e4.eta() < 2.4)")
+                         .Select("lambda e5: e5.Select(lambda e2: e2.pt())")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_filter_chain_bad(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    # Tempting, but very wrong. Or maybe it is ok, as long as we are careful in our code
+    seq = df.jets[df.jets.pt > 30.0][df.jets.eta < 2.4]
+    with pytest.raises(Exception) as e:
+        make_local(seq)
+
+    assert "filter" in str(e.value)
 
 
 def test_filter_and_divide(good_transform_request, reduce_wait_time, files_back_1):
@@ -464,6 +498,60 @@ def test_first_at_leaf_level(good_transform_request, reduce_wait_time, files_bac
         .Select("lambda e9: e9.First()")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
+
+
+def test_make_local_twice(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets.pt
+    make_local(seq)
+    json_1 = clean_linq(good_transform_request['selection'])
+
+    make_local(seq)
+    json_2 = clean_linq(good_transform_request['selection'])
+
+    assert json_1 == json_2
+
+
+def test_make_local_twice_check_test(good_transform_request, reduce_wait_time, files_back_1):
+    # Make sure this method of testing continues to work
+    # references and dicts in python are funny!
+    df = xaod_table(f)
+    seq = df.jets.pt
+    make_local(seq)
+    json_1 = clean_linq(good_transform_request['selection'])
+
+    make_local(seq / 1000.0)
+    json_2 = clean_linq(good_transform_request['selection'])
+
+    assert json_1 != json_2
+
+
+def test_make_local_twice_filter(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets[df.jets.pt > 30].pt
+    make_local(seq)
+    json_1 = clean_linq(good_transform_request['selection'])
+
+    make_local(seq)
+    json_2 = clean_linq(good_transform_request['selection'])
+
+    assert json_1 == json_2
+
+
+def test_make_local_bad(good_transform_request, reduce_wait_time, files_back_1):
+    define_alias('', 'ptgev', lambda o: o.pt / 1000.0)
+    df = xaod_table(f)
+
+    mc_part = df.TruthParticles('TruthParticles')
+    mc_ele = mc_part[(mc_part.pdgId == 11)]
+
+    make_local(mc_ele.ptgev)
+    json_1 = clean_linq(good_transform_request['selection'])
+
+    make_local(mc_ele.ptgev)
+    json_2 = clean_linq(good_transform_request['selection'])
+
+    assert json_1 == json_2
 
 
 # def test_count_in_nested_filter(good_transform_request, reduce_wait_time, files_back_1):

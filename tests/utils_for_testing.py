@@ -86,11 +86,16 @@ def good_transform_request(mocker):
     '''
     called_json_data = {}
 
+    count = 0
+
     def call_post(data_dict_to_save: dict, json=None):
         data_dict_to_save.update(json)
-        return ClientSessionMocker(dumps({"request_id": "1234-4433-111-34-22-444"}), 200)
-    mocker.patch('aiohttp.ClientSession.post', side_effect=lambda _,
-                 json: call_post(called_json_data, json=json))
+        nonlocal count
+        count += 1
+        return ClientSessionMocker(dumps({"request_id": f"1234-4433-111-34-22-444-{count}"}), 200)
+        
+    mocker.patch('aiohttp.ClientSession.post', side_effect=lambda _, json:
+                 call_post(called_json_data, json=json))
 
     r2 = ClientSessionMocker(dumps({"files-remaining": "0", "files-processed": "1"}), 200)
     mocker.patch('aiohttp.ClientSession.get', return_value=r2)
@@ -138,6 +143,9 @@ def clean_linq(linq: str) -> str:
             index += 1
             mapping[v] = new_var
 
+    if len(mapping) == 0:
+        return linq
+        
     max_len = max([len(k) for k in mapping.keys()])
     for l in range(max_len, 0, -1):
         for k in mapping.keys():

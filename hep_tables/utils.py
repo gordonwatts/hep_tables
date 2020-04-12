@@ -1,5 +1,6 @@
 import ast
-from typing import List, Dict, Optional, Tuple, Type
+import re
+from typing import Dict, List, Optional, Tuple, Type
 
 from dataframe_expressions import ast_DataFrame
 

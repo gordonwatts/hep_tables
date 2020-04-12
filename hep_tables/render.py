@@ -279,7 +279,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         self.visit(value)
 
         # And the thing we want to call we can now render.
-        expr = render_callable(callable, self.context, callable.dataframe)
+        expr, new_context = render_callable(callable, self.context, callable.dataframe)
 
         # In that expr there may be captured variables, or references to things that
         # are not in `value`. If that is the case, that means we need to add a monad to fetch
@@ -292,9 +292,9 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             if _is_list(self.sequence.rep_type):
                 s, t = _render_expression(
                     statement_unwrap_list(self.sequence._ast, self.sequence.rep_type),
-                    expr, self.context, self)
+                    expr, new_context, self)
             else:
-                s, t = _render_expression(self.sequence, expr, self.context, self)
+                s, t = _render_expression(self.sequence, expr, new_context, self)
             assert t.term == 'main_sequence'
             if len(s) > 0:
                 self.statements += s
@@ -321,7 +321,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 select_var_rep_ast = _ast_VarRef(select_var, seq_as_object.rep_type)
 
                 with self.substitute_ast(self.sequence._ast, select_var_rep_ast):
-                    trm = _resolve_expr_inline(seq_as_object, expr, self.context, self)
+                    trm = _resolve_expr_inline(seq_as_object, expr, new_context, self)
 
             st = statement_select(a, List[trm.type],
                                   select_var, trm,
