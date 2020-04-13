@@ -1,7 +1,6 @@
 import pytest
 
 from hep_tables import make_local, xaod_table
-from dataframe_expressions import define_alias
 
 from .utils_for_testing import ( # NOQA
     clean_linq, delete_default_downloaded_files, f, files_back_1,
@@ -533,22 +532,6 @@ def test_make_local_twice_filter(good_transform_request, reduce_wait_time, files
     json_1 = clean_linq(good_transform_request['selection'])
 
     make_local(seq)
-    json_2 = clean_linq(good_transform_request['selection'])
-
-    assert json_1 == json_2
-
-
-def test_make_local_bad(good_transform_request, reduce_wait_time, files_back_1):
-    define_alias('', 'ptgev', lambda o: o.pt / 1000.0)
-    df = xaod_table(f)
-
-    mc_part = df.TruthParticles('TruthParticles')
-    mc_ele = mc_part[(mc_part.pdgId == 11)]
-
-    make_local(mc_ele.ptgev)
-    json_1 = clean_linq(good_transform_request['selection'])
-
-    make_local(mc_ele.ptgev)
     json_2 = clean_linq(good_transform_request['selection'])
 
     assert json_1 == json_2
