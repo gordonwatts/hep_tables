@@ -319,6 +319,30 @@ def test_seq_map_with_count(good_transform_request, reduce_wait_time, files_back
     assert clean_linq(json['selection']) == txt
 
 
+def test_map_user_func_is_iterator(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    mcs = df.mcs
+    jets = df.jets
+
+    from dataframe_expressions import user_func
+    @user_func
+    def DeltaR(p1_eta: float) -> float:
+        assert False
+
+    mcs['jets_pt'] = lambda mc: jets.map(lambda j: DeltaR(mc.phi))
+    make_local(mcs.jets_pt.Count())
+
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.mcs(), e1)")
+        .Select("lambda e2: e2[0].Select(lambda e3: e2[1].jets()"
+                ".Select(lambda e4: DeltaR(e3.phi())))")
+        .Select("lambda e5: e5.Select(lambda e6: e6.Count())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_map_in_repeat_root_filter(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     # MC particles's pt when they are close to a jet.
@@ -333,7 +357,7 @@ def test_map_in_repeat_root_filter(good_transform_request, reduce_wait_time, fil
     with pytest.raises(RenderException) as e:
         make_local(seq)
 
-    assert str(e.value).find('list of ojects') != -1
+    assert str(e.value).find('requires as input') != -1
 
 
 def test_capture_inside_with_call(good_transform_request, reduce_wait_time, files_back_1):

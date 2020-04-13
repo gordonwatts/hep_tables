@@ -3,6 +3,7 @@ import re
 from typing import Dict, List, Optional, Tuple, Type
 
 from dataframe_expressions import ast_DataFrame
+from numpy.lib.arraysetops import isin
 
 
 def _find_dataframes(a: ast.AST) -> ast_DataFrame:
@@ -155,3 +156,70 @@ def _is_list(t: Type) -> bool:
 def _unwrap_list(t: Type) -> Type:
     assert _is_list(t)
     return t.__args__[0]
+
+
+def _same_generic_type(t1: Type, t2: Type) -> bool:
+    from typing import _GenericAlias
+    if not isinstance(t1, _GenericAlias) or not isinstance(t2, _GenericAlias):
+        return False
+
+    if t1.__origin__ != t2.__origin__:
+        return False
+
+    if len(t1.__args__) != len(t2.__args__):
+        return False
+
+    return True
+
+
+def _is_of_type(t1: Type, t2: Type) -> bool:
+    '''
+    Returns true if t1 is of type t2
+    '''
+    if t1 == t2:
+        return True
+
+    if t2 == object:
+        return True
+
+    if not _same_generic_type(t1, t2):
+        return False
+
+    for a_t1, a_t2 in zip(t1.__args__, t2.__args__):
+        if not _is_of_type(a_t1, a_t2):
+            return False
+
+    return True
+
+
+def _type_replace(source_type: Type, find: Type, replace: Type) -> Optional[Type]:
+    '''
+    Find `find` as deeply in `source_type` as possible, and replace it with `replace'.
+
+    `_type_replace(List[List[float]], List[object], int) -> List[int]`
+
+    If source_type contains no `find`, then return None
+    '''
+    from typing import _GenericAlias
+    if isinstance(source_type, _GenericAlias):
+        if source_type._name == 'List':
+            r = _type_replace(source_type.__args__[0], find, replace)
+            if r is not None:
+                return List[r]
+
+    if _is_of_type(source_type, find):
+        return replace
+
+    return None
+
+
+def _count_list(t: Type) -> int:
+    'Count number of List in a nested List'
+    from typing import _GenericAlias
+    if not isinstance(t, _GenericAlias):
+        return 0
+
+    if t._name != 'List':
+        return 0
+
+    return 1 + _count_list(t.__args__[0])

@@ -11,7 +11,9 @@ from func_adl_xAOD import use_exe_servicex
 from .statements import (
     _monad_manager, statement_base, statement_constant, statement_df,
     statement_select, statement_unwrap_list, statement_where, term_info)
-from .utils import _find_root_expr, new_var_name, to_args_from_keywords, _is_list, _unwrap_list
+from .utils import (
+    _count_list, _find_root_expr, _is_list, _type_replace, _unwrap_list,
+    new_var_name, to_args_from_keywords)
 
 
 class RenderException(Exception):
@@ -75,6 +77,90 @@ class replace_an_ast:
         if self._done:
             r = self._tracker.ast_replacements.pop()
             assert r[0] is self._source
+
+
+def _render_expresion_as_transform(tracker: _statement_tracker, context: render_context,
+                                   a: ast.AST):
+    '''
+    Render an expression and add into the sequence. If this turns out to be a term,
+    then as a select.
+    '''
+    statements, term = _render_expression(tracker.sequence, a, context, tracker)
+
+    if term.term == 'main_sequence':
+        if len(statements) > 0:
+            tracker.statements += statements
+            tracker.sequence = statements[-1]
+    else:
+        assert len(statements) == 0, \
+            'Internal programming error - cannot deal with statements and term'
+        vn = new_var_name()
+        st_select = statement_select(a, term.type, vn,
+                                     term, _is_list(tracker.sequence.rep_type))
+        tracker.statements.append(st_select)
+        tracker.sequence = st_select
+
+
+def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context,
+                     tracker: _statement_tracker):
+    # And the thing we want to call we can now render.
+    expr, new_context = render_callable(callable, context, callable.dataframe)
+
+    # In that expr there may be captured variables, or references to things that
+    # are not in `value`. If that is the case, that means we need to add a monad to fetch
+    # them from earlier in the process.
+    root_expr = _find_root_expr(expr, tracker.sequence._ast)
+    if root_expr is tracker.sequence._ast:
+        # Just continuing on with the sequence already in place.
+        assert _is_list(tracker.sequence.rep_type) \
+            or isinstance(tracker.sequence, statement_unwrap_list)
+        if _is_list(tracker.sequence.rep_type):
+            s, t = _render_expression(
+                statement_unwrap_list(tracker.sequence._ast, tracker.sequence.rep_type),
+                expr, new_context, tracker)
+        else:
+            s, t = _render_expression(tracker.sequence, expr, new_context, tracker)
+        assert t.term == 'main_sequence'
+        if len(s) > 0:
+            tracker.statements += s
+            if _is_list(tracker.sequence.rep_type):
+                # TODO: Clearly a KLUDGE KLUDGE
+                assert isinstance(s[-1], statement_select) \
+                    or isinstance(s[-1], statement_where)
+                s[-1]._act_on_sequence = True
+                s[-1].rep_type = List[tracker.sequence.rep_type]
+            tracker.sequence = s[-1]
+
+    elif root_expr is not None:
+        monad_index = tracker.carry_monad_forward(root_expr)
+        monad_ref = _monad_manager.new_monad_ref()
+
+        # Create a pointer to the base monad - which is an object
+        with tracker.substitute_ast(
+                root_expr, _ast_VarRef(f'{monad_ref}[{monad_index}]', object)):
+
+            # The var we are going to loop over is a pointer to the sequence.
+            select_var = new_var_name()
+            seq_as_object = tracker.sequence if not _is_list(tracker.sequence.rep_type) \
+                else statement_unwrap_list(tracker.sequence._ast, tracker.sequence.rep_type)
+            select_var_rep_ast = _ast_VarRef(select_var, seq_as_object.rep_type)
+
+            with tracker.substitute_ast(tracker.sequence._ast, select_var_rep_ast):
+                trm = _resolve_expr_inline(seq_as_object, expr, new_context, tracker)
+
+        st = statement_select(a, List[trm.type],
+                              select_var, trm,
+                              _is_list(tracker.sequence.rep_type))
+        st.prev_statement_is_monad()
+        st.set_monad_ref(monad_ref)
+        tracker.statements.append(st)
+        tracker.sequence = st
+
+        # TODO: pull this stuff above out - it is common!
+
+    else:
+        # If root_expr is none, then whatever it is is a constant. So just select it.
+        _render_expresion_as_transform(tracker, context, expr)
 
 
 class _statement_tracker:
@@ -195,30 +281,10 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             self.statements.append(st)
             self.sequence = st
 
-    def _render_expresion_as_transform(self, a: ast.AST):
-        '''
-        Render an expression and add into the sequence. If this turns out to be a term,
-        then as a select.
-        '''
-        statements, term = _render_expression(self.sequence, a, self.context, self)
-
-        if term.term == 'main_sequence':
-            if len(statements) > 0:
-                self.statements += statements
-                self.sequence = statements[-1]
-        else:
-            assert len(statements) == 0, \
-                'Internal programming error - cannot deal with statements and term'
-            vn = new_var_name()
-            st_select = statement_select(a, term.type, vn,
-                                         term, _is_list(self.sequence.rep_type))
-            self.statements.append(st_select)
-            self.sequence = st_select
-
     def visit_Attribute(self, a: ast.Attribute):
         # Get the stream up to the base expressoin.
         # if a.value is not self.sequence._ast:
-        self._render_expresion_as_transform(a.value)
+        _render_expresion_as_transform(self, self.context, a.value)
 
         # Now we need to "select" a level here. This means doing a call.
         name = a.attr
@@ -278,64 +344,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         # Render the sequence that gets us to what we want to map over.
         self.visit(value)
 
-        # And the thing we want to call we can now render.
-        expr, new_context = render_callable(callable, self.context, callable.dataframe)
-
-        # In that expr there may be captured variables, or references to things that
-        # are not in `value`. If that is the case, that means we need to add a monad to fetch
-        # them from earlier in the process.
-        root_expr = _find_root_expr(expr, self.sequence._ast)
-        if root_expr is self.sequence._ast:
-            # Just continuing on with the sequence already in place.
-            assert _is_list(self.sequence.rep_type) \
-                or isinstance(self.sequence, statement_unwrap_list)
-            if _is_list(self.sequence.rep_type):
-                s, t = _render_expression(
-                    statement_unwrap_list(self.sequence._ast, self.sequence.rep_type),
-                    expr, new_context, self)
-            else:
-                s, t = _render_expression(self.sequence, expr, new_context, self)
-            assert t.term == 'main_sequence'
-            if len(s) > 0:
-                self.statements += s
-                if _is_list(self.sequence.rep_type):
-                    # TODO: Clearly a KLUDGE KLUDGE
-                    assert isinstance(s[-1], statement_select) \
-                        or isinstance(s[-1], statement_where)
-                    s[-1]._act_on_sequence = True
-                    s[-1].rep_type = List[self.sequence.rep_type]
-                self.sequence = s[-1]
-
-        elif root_expr is not None:
-            monad_index = self.carry_monad_forward(root_expr)
-            monad_ref = _monad_manager.new_monad_ref()
-
-            # Create a pointer to the base monad - which is an object
-            with self.substitute_ast(
-                    root_expr, _ast_VarRef(f'{monad_ref}[{monad_index}]', object)):
-
-                # The var we are going to loop over is a pointer to the sequence.
-                select_var = new_var_name()
-                seq_as_object = self.sequence if not _is_list(self.sequence.rep_type) \
-                    else statement_unwrap_list(self.sequence._ast, self.sequence.rep_type)
-                select_var_rep_ast = _ast_VarRef(select_var, seq_as_object.rep_type)
-
-                with self.substitute_ast(self.sequence._ast, select_var_rep_ast):
-                    trm = _resolve_expr_inline(seq_as_object, expr, new_context, self)
-
-            st = statement_select(a, List[trm.type],
-                                  select_var, trm,
-                                  _is_list(self.sequence.rep_type))
-            st.prev_statement_is_monad()
-            st.set_monad_ref(monad_ref)
-            self.statements.append(st)
-            self.sequence = st
-
-            # TODO: pull this stuff above out - it is common!
-
-        else:
-            # If root_expr is none, then whatever it is is a constant. So just select it.
-            self._render_expresion_as_transform(expr)
+        # Now do the call
+        _render_callable(a, callable, self.context, self)
 
     def visit_Call(self, a: ast.Call):
         # Math function calls are treated like expressions
@@ -344,7 +354,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 m = getattr(self, f'visit_call_{a.func.attr}')
                 m(a.func.value, a.args, a.keywords, a)
             else:
-                self._render_expresion_as_transform(a.func.value)
+                _render_expresion_as_transform(self, self.context, a.func.value)
 
                 resolved_args = [_resolve_expr_inline(self.sequence, arg, self.context, self)
                                  for arg in a.args]
@@ -391,24 +401,22 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         expr = f'{iterator_name}.{function_call}'
 
         # The result type of the sequence after we are done. Will depend on what we are currently
-        # working on
-        input_type, result_type = _type_system(name_of_method)
-        working_on_sequence = _is_list(self.sequence.rep_type)
-        if working_on_sequence:
-            if not _is_list(input_type):
-                # Input is a single object, and we are applying it to a list.
-                # Heuristics: we do a map operation.
-                result_type = List[result_type]
-            else:
-                # Input is a List, thus we eat this guy as if it was a single
-                # object. This might be something like Count or Sum
-                working_on_sequence = False
-        else:
-            if _is_list(input_type):
-                raise RenderException(f'The method "{name_of_method}" requires a list of ojects'
-                                      "as input, but it is against a single object.")
+        # working on. To understand if we want to work on the top level or the sequence we have to
+        # look to see what has happened to the types:
+        #   int -> int - then we are doing whatever we were doing (object, or list)
+        #   List[int] -> int - then are going to not operate on a sequence any longer
+        #                      (the function will take care of mapping sequence ot value)
+        #   object -> List[int] - Then we are not going to operate on a sequence.
 
-        # Finally, build the map statement, and then update the current sequence.
+        f_input_type, f_result_type = _type_system(name_of_method)
+        result_type = _type_replace(self.sequence.rep_type, f_input_type, f_result_type)
+        if result_type is None:
+            raise RenderException(f'The method "{name_of_method}" requires as input '
+                                  f'{str(f_input_type)} but is given {self.sequence.rep_type}')
+
+        working_on_sequence = _is_list(result_type) and _is_list(self.sequence.rep_type)
+
+        # Finally, build the call statement, and then update the current sequence.
         select = statement_select(a, result_type, iterator_name, term_info(expr, result_type),
                                   working_on_sequence)
         self.statements.append(select)
@@ -570,7 +578,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             '''
             Deal with math functions.
             '''
-            assert isinstance(a.func, ast.Attribute) or isinstance(a.func, ast_FunctionPlaceholder)
+            assert isinstance(a.func, (ast.Attribute, ast_FunctionPlaceholder, ast_Callable))
 
             if isinstance(a.func, ast.Attribute):
                 if a.func.attr not in _known_simple_math_functions:
@@ -592,6 +600,14 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                             statement_select(a, object, var_name, term_info(expr, object),
                                              _is_list(self.sequence.rep_type)))
                         self.term_stack.append(term_info('main_sequence', List[float]))
+            elif isinstance(a.func, ast_Callable):
+                assert len(a.args) == 1, "internal error - expect one arg for top level labmda"
+
+                # Render the sequence that gets us to what we want to map over.
+                self.visit(a.args[0])
+
+                # And the thing we want to call we can now render.
+                _render_callable(a, a.func, self.context, self)
             else:
                 # We are going to need to grab each argument (and in some cases we will
                 # need to use monads to track what the different arguments are going to

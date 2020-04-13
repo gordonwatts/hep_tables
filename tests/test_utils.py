@@ -1,5 +1,5 @@
 import ast
-from typing import List
+from typing import List, Dict
 
 from dataframe_expressions import ast_DataFrame
 from dataframe_expressions.render import render
@@ -9,7 +9,7 @@ import pytest
 from hep_tables import xaod_table
 from hep_tables.utils import (
     _find_dataframes, _find_root_expr, _index_text_tuple, _is_list,
-    _parse_elements, _unwrap_list)
+    _parse_elements, _unwrap_list, _type_replace, _is_of_type, _count_list)
 
 # For use in testing - a mock.
 f = EventDataset('locads://bogus')
@@ -168,6 +168,62 @@ def test_unwrap_list():
 
 def test_unwrap_list_of_list():
     assert _unwrap_list(List[List[int]]) is List[int]
+
+
+def test_type_replace_nogo():
+    assert _type_replace(int, List[int], int) is None
+
+
+def test_type_replace_terminal():
+    assert _type_replace(int, int, float) is float
+
+
+def test_type_replace_list():
+    assert _type_replace(List[int], List[int], int) is int
+
+
+def test_type_replace_list_object():
+    assert _type_replace(List[int], List[object], int) is int
+
+
+def test_type_replace_nested_list():
+    assert _type_replace(List[List[int]], List[object], int) is List[int]
+
+
+def test_is_type_not():
+    assert not _is_of_type(int, List[int])
+
+
+def test_is_type_object():
+    assert _is_of_type(int, object)
+
+
+def test_is_type_list():
+    assert _is_of_type(List[int], List[int])
+
+
+def test_is_type_list_obj():
+    assert _is_of_type(List[int], List[object])
+
+
+def test_is_type_list_dict_obj():
+    assert not _is_of_type(Dict[int, str], List[object])
+
+
+def test_is_type_list_diff():
+    assert not _is_of_type(List[int], List[float])
+
+
+def test_count_list_none():
+    assert _count_list(int) == 0
+
+
+def test_count_list_one():
+    assert _count_list(List[int]) == 1
+
+
+def test_count_list_two():
+    assert _count_list(List[List[int]]) == 2
 
 # def test_fail_to_find_two_dataframes():
 #     df1 = xaod_table(f)
