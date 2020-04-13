@@ -93,7 +93,7 @@ def _render_expresion_as_transform(tracker: _statement_tracker, context: render_
             tracker.sequence = statements[-1]
     else:
         assert len(statements) == 0, \
-            'Internal programming error - cannot deal with statements and term'
+            f'Internal programming error - cannot deal with statements and term {term.term}'
         vn = new_var_name()
         st_select = statement_select(a, term.type, vn,
                                      term, _is_list(tracker.sequence.rep_type))
