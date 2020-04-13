@@ -2,6 +2,8 @@ import pytest
 
 from hep_tables import RenderException, curry, make_local, xaod_table
 
+from dataframe_expressions import user_func
+
 from .utils_for_testing import (  # NOQA
     clean_linq, f, files_back_1, good_transform_request, reduce_wait_time,
     reset_var_counter, translate_linq, delete_default_downloaded_files)
@@ -246,6 +248,28 @@ def test_map_with_2filters_inside_twice(good_transform_request, reduce_wait_time
     json_2 = clean_linq(good_transform_request['selection'])
 
     assert json_1 == json_2
+
+
+def test_map_map(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+
+    eles = df.tracks
+    mc_part = df.mcs
+
+    good_eles = eles[eles.pt > 20]
+
+    ele_mcs = good_eles.map(lambda e: mc_part)
+    make_local(ele_mcs.pt)
+
+    json = clean_linq(good_transform_request['selection'])
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.tracks(), e1)")
+        .Select("lambda e6: (e6[0].Where(lambda e7: e7.pt() > 20), e6[1])")
+        .Select("lambda e2: e2[0].Select(lambda e3: e2[1].mcs())")
+        .Select("lambda e4: e4.Select(lambda e5: e5.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert json == txt
 
 
 def test_map_with_filter_inside_call(good_transform_request, reduce_wait_time, files_back_1):

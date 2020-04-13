@@ -299,7 +299,10 @@ class statement_where(_monad_manager, statement_base):
         return _render_as_function(self, var_name, 'Where')
 
     def __str__(self):
-        return f'  .Where({self._inner_lambda_text()})'
+        if self._act_on_sequence:
+            return f'  .Select({self._inner_lambda_text()})'
+        else:
+            return f'  .Where({self._inner_lambda_text()})'
 
 
 class statement_constant(statement_base):
