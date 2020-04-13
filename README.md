@@ -19,3 +19,7 @@
 
  - Everythign should be typed. And we should use Sequence[xxx] to represent the sequecne, so write our own templated type
  
+ - We need to monitor the "depth" we are working on in a sequence. Sequence can be nested,
+   and some how we need to normalize how we think about that. As you have to nest Select
+   statements the deeper you go. Currently you can go one or two in this code, this needs
+   to be something general.
