@@ -102,7 +102,7 @@ def _render_expresion_as_transform(tracker: _statement_tracker, context: render_
 
 
 def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context,
-                     tracker: _statement_tracker):
+                     tracker: _statement_tracker) -> term_info:
     # And the thing we want to call we can now render.
     expr, new_context = render_callable(callable, context, callable.dataframe)
 
@@ -130,6 +130,7 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
                 s[-1]._act_on_sequence = True
                 s[-1].rep_type = List[tracker.sequence.rep_type]
             tracker.sequence = s[-1]
+        return t
 
     elif root_expr is not None:
         monad_index = tracker.carry_monad_forward(root_expr)
@@ -155,12 +156,12 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
         st.set_monad_ref(monad_ref)
         tracker.statements.append(st)
         tracker.sequence = st
-
-        # TODO: pull this stuff above out - it is common!
+        return term_info('main_sequence', st.rep_type)
 
     else:
         # If root_expr is none, then whatever it is is a constant. So just select it.
         _render_expresion_as_transform(tracker, context, expr)
+        return term_info('main_sequence', tracker.sequence.rep_type)
 
 
 class _statement_tracker:
@@ -604,9 +605,11 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
 
                 # Render the sequence that gets us to what we want to map over.
                 self.visit(a.args[0])
+                self.term_stack.pop()
 
                 # And the thing we want to call we can now render.
-                _render_callable(a, a.func, self.context, self)
+                t = _render_callable(a, a.func, self.context, self)
+                self.term_stack.append(t)
             else:
                 # We are going to need to grab each argument (and in some cases we will
                 # need to use monads to track what the different arguments are going to
