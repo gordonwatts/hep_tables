@@ -12,7 +12,7 @@ from .statements import (
     _monad_manager, statement_base, statement_constant, statement_df,
     statement_select, statement_unwrap_list, statement_where, term_info)
 from .utils import (
-    _count_list, _find_root_expr, _is_list, _type_replace, _unwrap_list,
+    _find_root_expr, _is_list, _type_replace, _unwrap_list,
     new_var_name, to_args_from_keywords)
 
 
@@ -558,7 +558,6 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             # The stream is now the term we want to use. In order to do this we'll now have
             # to deal with a sequence reference. This is the main sequence, so we want to leave
             # that as the term.
-            # assert _is_list(self.sequence.rep_type)
             self.term_stack.append(term_info("main_sequence", self.sequence.rep_type))
 
         def visit_Attribute(self, a: ast.Attribute):

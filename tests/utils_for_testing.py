@@ -13,6 +13,7 @@ import servicex.servicex as fe
 
 import hep_tables.local as hep_local
 from hep_tables.utils import reset_new_var_counter
+from dataframe_expressions.alias import _reset_alias_catalog
 
 
 # For use in testing - a mock.
@@ -40,6 +41,14 @@ def reset_var_counter():
     reset_new_var_counter()
     # This is the col name in our dummy data
     hep_local.default_col_name = b'JetPt'
+
+    # And reset the alias
+    _reset_alias_catalog()
+    yield None
+
+    # For good measure
+    reset_new_var_counter()
+    _reset_alias_catalog()
 
 
 @pytest.fixture(scope="module")
@@ -93,7 +102,7 @@ def good_transform_request(mocker):
         nonlocal count
         count += 1
         return ClientSessionMocker(dumps({"request_id": f"1234-4433-111-34-22-444-{count}"}), 200)
-        
+
     mocker.patch('aiohttp.ClientSession.post', side_effect=lambda _, json:
                  call_post(called_json_data, json=json))
 
@@ -145,7 +154,7 @@ def clean_linq(linq: str) -> str:
 
     if len(mapping) == 0:
         return linq
-        
+
     max_len = max([len(k) for k in mapping.keys()])
     for l in range(max_len, 0, -1):
         for k in mapping.keys():
