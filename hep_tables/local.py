@@ -26,12 +26,14 @@ def _dump_ast(statements: List[statement_base]):
     return '\n'.join(lines)
 
 
-def make_local(df: Union[DataFrame, Column]) -> Any:
+def make_local(df: Union[DataFrame, Column], force_rerun: bool = False) -> Any:
     '''
     Render a DataFrame's contents locally.
 
     Arguments:
-        df          A DataFrame that is based on an `xaod_table`.
+        df              A DataFrame that is based on an `xaod_table`.
+        force_rerun     If true, then no data will be pulled from any cache, and the
+                        query will be re-run from scratch.
 
     Returns:
         Values      A Jagged array, or other objects, depending on the query
@@ -65,6 +67,8 @@ def make_local(df: Union[DataFrame, Column]) -> Any:
     lg.debug(f'Stem sent to servicex: \n {statement_dump}')
 
     if isinstance(result, ObjectStream):
-        return result.AsAwkwardArray(['col1']).value(use_exe_servicex)[default_col_name]
+        return result.AsAwkwardArray(['col1']) \
+            .value(lambda a:
+                   use_exe_servicex(a, cached_results_OK=not force_rerun))[default_col_name]
     else:
         return result

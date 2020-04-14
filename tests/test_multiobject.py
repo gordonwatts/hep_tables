@@ -250,7 +250,7 @@ def test_map_with_2filters_inside_twice(good_transform_request, reduce_wait_time
     assert json_1 == json_2
 
 
-def test_map_map(good_transform_request, reduce_wait_time, files_back_1):
+def test_map_statement_output_format(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
 
     eles = df.tracks

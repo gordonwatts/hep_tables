@@ -6,7 +6,6 @@ from .utils_for_testing import ( # NOQA
     clean_linq, delete_default_downloaded_files, f, files_back_1,
     good_transform_request, reduce_wait_time, reset_var_counter, translate_linq)
 
-
 @pytest.fixture(autouse=True)
 def reset_var_counter_alias():
     from dataframe_expressions.alias import _reset_alias_catalog
@@ -31,6 +30,39 @@ def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
                          .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
+
+
+# def test_cache_on_by_default(mocker):
+#     r = mocker.patch('func_adl_xAOD.use_exe_servicex')
+#     df = xaod_table(f)
+#     seq = df.jets.pt
+#     make_local(seq)
+
+#     r.assert_called_once()
+#     kwargs = r.call_args[1]
+#     assert kwargs['cached_results_OK'] is True
+
+
+# def test_cache_on(mocker):
+#     r = mocker.patch('func_adl_xAOD.use_exe_servicex')
+#     df = xaod_table(f)
+#     seq = df.jets.pt
+#     make_local(seq, force_rerun=True)
+
+#     r.assert_called_once()
+#     kwargs = r.call_args[1]
+#     assert kwargs['cached_results_OK'] is True
+
+
+# def test_cache_off(mocker):
+#     r = mocker.patch('func_adl_xAOD.use_exe_servicex')
+#     df = xaod_table(f)
+#     seq = df.jets.pt
+#     make_local(seq, force_rerun=False)
+
+#     r.assert_called_once()
+#     kwargs = r.call_args[1]
+#     assert kwargs['cached_results_OK'] is False
 
 
 def test_collect_pts_as_call(good_transform_request, reduce_wait_time, files_back_1):
