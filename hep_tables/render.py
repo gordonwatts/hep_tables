@@ -49,11 +49,16 @@ def curry(f: Callable) -> Callable:
 
 class _ast_VarRef(ast.AST):
     'An internal AST when we want to replace an ast with a variable reference inline'
-    def __init__(self, name: str, t: Type):
+    def __init__(self, v: term_info):
         ast.AST.__init__(self)
-        self.name = name
-        self.type = t
-        self._fields = ('name', 'type')
+        self.term = v
+        self._fields = ('term',)
+
+    def __str__(self):
+        return f'{self.term.term}: {self.term.type}'
+
+    def __repl__(self):
+        return f'{self.term.term}: {self.term.type}'
 
 
 class replace_an_ast:
@@ -138,13 +143,13 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
 
         # Create a pointer to the base monad - which is an object
         with tracker.substitute_ast(
-                root_expr, _ast_VarRef(f'{monad_ref}[{monad_index}]', object)):
+                root_expr, _ast_VarRef(term_info(f'{monad_ref}[{monad_index}]', object))):
 
             # The var we are going to loop over is a pointer to the sequence.
             seq_as_object = tracker.sequence if not _is_list(tracker.sequence.rep_type) \
                 else statement_unwrap_list(tracker.sequence._ast, tracker.sequence.rep_type)
             select_var = new_term(seq_as_object.rep_type)
-            select_var_rep_ast = _ast_VarRef(select_var.term, select_var.type)
+            select_var_rep_ast = _ast_VarRef(select_var)
 
             with tracker.substitute_ast(tracker.sequence._ast, select_var_rep_ast):
                 trm = _resolve_expr_inline(seq_as_object, expr, new_context, tracker)
@@ -265,7 +270,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
 
         var_name = new_term(_unwrap_list_df(self.sequence))
         with self.substitute_ast(self.sequence._ast,
-                                 _ast_VarRef(var_name.term, var_name.type)):
+                                 _ast_VarRef(var_name)):
             term = _resolve_expr_inline(self.sequence, a.filter, self.context, self)
             st = statement_where(a, self.sequence.rep_type,
                                  var_name, term,
@@ -371,7 +376,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
 
             var_name = new_term(self.sequence.rep_type)
             with self.substitute_ast(self.sequence._ast,
-                                     _ast_VarRef(var_name.term, var_name.type)):
+                                     _ast_VarRef(var_name)):
                 resolved_args = [do_resolve(arg) for arg in a.args]
 
             for t in resolved_args:
@@ -524,7 +529,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             assert len(a.values) == 2, 'Cannot do bool operations more than two operands'
             var_name = new_term(self.sequence.rep_type)
             with self.substitute_ast(self.sequence._ast,
-                                     _ast_VarRef(var_name.type, var_name.type)):
+                                     _ast_VarRef(var_name)):
                 left = _resolve_expr_inline(self.sequence, a.values[0], self.context, self)
                 right = _resolve_expr_inline(self.sequence, a.values[1], self.context, self)
 
@@ -543,7 +548,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             self.term_stack.append(term_info(f'"{a.s}"', str))
 
         def visit__ast_VarRef(self, a: _ast_VarRef):
-            self.term_stack.append(term_info(a.name, a.type))
+            self.term_stack.append(a.term)
 
         def process_with_mapper(self, a: ast.AST):
             '''
@@ -683,7 +688,7 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
             or (filter_sequence[0]
                 .apply_as_function(term_info('bogus', object)).term.find('bogus') < 0)
         assert a_resolved is None or isinstance(a_resolved, _ast_VarRef)
-        stem = term_info(a_resolved.name, a_resolved.type) if a_resolved is not None \
+        stem = a_resolved.term if a_resolved is not None \
             else term_info('bogus', object)
         for s in filter_sequence:
             stem = s.apply_as_function(stem)
