@@ -6,6 +6,7 @@ from .utils_for_testing import ( # NOQA
     clean_linq, delete_default_downloaded_files, f, files_back_1,
     good_transform_request, reduce_wait_time, reset_var_counter, translate_linq)
 
+
 @pytest.fixture(autouse=True)
 def reset_var_counter_alias():
     from dataframe_expressions.alias import _reset_alias_catalog

@@ -9,6 +9,12 @@ from func_adl import ObjectStream
 from hep_tables.utils import _index_text_tuple, new_var_name, _is_list, _unwrap_list
 
 
+def _unwrap_list_df(s: statement_base) -> Type:
+    if isinstance(s, statement_df):
+        return object
+    return _unwrap_list(s.rep_type)
+
+
 class _monad_manager:
     '''
     A mixin to help track monads as they are needed by statements that support them.
@@ -198,13 +204,13 @@ def _render_as_function(s: Union[statement_select, statement_where],
     s._monad_ref = []
     if s._act_on_sequence:
         inner_var = new_var_name()
-        inner_expr = s._func.term.replace(s._iterator, inner_var)
+        inner_expr = s._func.term.replace(s._iterator.term, inner_var)
         expr = s.render(var_name.term,
                         f'{var_name.term}.{operation}(lambda {inner_var}: {inner_expr})')
         return term_info(expr, s.rep_type, monad_refs + var_name.monad_refs)
     else:
         return term_info(s.render(var_name.term,
-                         s._func.term.replace(s._iterator, var_name.term)),
+                         s._func.term.replace(s._iterator.term, var_name.term)),
                          s.rep_type,
                          monad_refs)
 
@@ -217,14 +223,14 @@ class statement_select(_monad_manager, statement_base):
         - Sequence of objects tranformation:
             df -> df.Select(lambda e1: e1.Select(lambda e2: e2.jets()))
     '''
-    def __init__(self, ast_rep: ast.AST, rep_type: Type, var_name: str,
+    def __init__(self, ast_rep: ast.AST, rep_type: Type, iterator: term_info,
                  function_text: term_info, is_sequence_of_objects: bool):
         '''
         Creates a select statement.
         '''
         statement_base.__init__(self, ast_rep, rep_type)
         _monad_manager.__init__(self)
-        self._iterator = var_name
+        self._iterator = iterator
         self._func = function_text
         self._act_on_sequence = is_sequence_of_objects
 
@@ -235,11 +241,11 @@ class statement_select(_monad_manager, statement_base):
         if self._act_on_sequence:
             outter_var_name = new_var_name()
             inner_func = self.render(outter_var_name, f'{outter_var_name}'
-                                     f'.Select(lambda {self._iterator}: {self._func.term})')
+                                     f'.Select(lambda {self._iterator.term}: {self._func.term})')
             lambda_text = f'lambda {outter_var_name}: {inner_func}'
         else:
-            inner_func = self.render(self._iterator, self._func.term)
-            lambda_text = f'lambda {self._iterator}: {inner_func}'
+            inner_func = self.render(self._iterator.term, self._func.term)
+            lambda_text = f'lambda {self._iterator.term}: {inner_func}'
         return lambda_text
 
     def apply(self, seq: object) -> ObjectStream:
@@ -261,11 +267,11 @@ class statement_where(_monad_manager, statement_base):
         - Sequence of objects filter:
             df -> df.Select(lambda e1: e1.Where(lambda e2: e2.jets()))
     '''
-    def __init__(self, ast_rep: ast.AST, rep_type: Type, var_name: str,
+    def __init__(self, ast_rep: ast.AST, rep_type: Type, iterator: term_info,
                  function_term: term_info, is_sequence_of_objects: bool):
         statement_base.__init__(self, ast_rep, rep_type)
         _monad_manager.__init__(self)
-        self._iterator = var_name
+        self._iterator = iterator
         self._func = function_term
         self._act_on_sequence = is_sequence_of_objects
 
@@ -277,13 +283,13 @@ class statement_where(_monad_manager, statement_base):
         if self._act_on_sequence:
             outter_var_name = new_var_name()
             full_where_tuple = self.render(
-                outter_var_name, f'{outter_var_name}.Where(lambda {self._iterator}: '
+                outter_var_name, f'{outter_var_name}.Where(lambda {self._iterator.term}: '
                 f'{self._func.term})')
             lambda_text = f'lambda {outter_var_name}: {full_where_tuple}'
             return lambda_text
         else:
-            lambda_text = f'lambda {self._iterator}: ' \
-                f'{self.render(self._iterator, self._func.term)}'
+            lambda_text = f'lambda {self._iterator.term}: ' \
+                f'{self.render(self._iterator.term, self._func.term)}'
             return lambda_text
 
     def apply(self, seq: object) -> ObjectStream:

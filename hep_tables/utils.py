@@ -1,9 +1,7 @@
 import ast
-import re
 from typing import Dict, List, Optional, Tuple, Type
 
 from dataframe_expressions import ast_DataFrame
-from numpy.lib.arraysetops import isin
 
 
 def _find_dataframes(a: ast.AST) -> ast_DataFrame:
@@ -40,6 +38,12 @@ def new_var_name():
     v = f'e{_var_name_counter}'
     _var_name_counter = _var_name_counter + 1
     return v
+
+
+def new_term(t: Type):
+    'Return a new term of type t with a random name'
+    from .render import term_info
+    return term_info(new_var_name(), t)
 
 
 def to_ast(o: object) -> ast.AST:

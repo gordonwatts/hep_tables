@@ -2,8 +2,6 @@ import pytest
 
 from hep_tables import RenderException, curry, make_local, xaod_table
 
-from dataframe_expressions import user_func
-
 from .utils_for_testing import (  # NOQA
     clean_linq, f, files_back_1, good_transform_request, reduce_wait_time,
     reset_var_counter, translate_linq, delete_default_downloaded_files)
@@ -389,6 +387,29 @@ def test_capture_inside_with_call(good_transform_request, reduce_wait_time, file
     df = xaod_table(f)
     seq = df.jets.map(lambda j: df.Electrons().Count())
     make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.jets(), e1)")
+        .Select("lambda e14: e14[0].Select(lambda e3: "
+                "e14[1]"
+                ".Electrons()"
+                ".Count())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_count_of_sequence_inside_filter_2maps(good_transform_request, reduce_wait_time,
+                                               files_back_1):
+    df = xaod_table(f)
+    mc_part = df.TruthParticles('TruthParticles')
+    eles = df.Electrons('Electrons')
+
+    eles['near_mcs'] = lambda reco_e: mc_part
+    eles['hasMC'] = lambda e: e.near_mcs.Count() > 0
+
+    make_local(eles[eles.hasMC].pt)
+
     json = good_transform_request
     txt = translate_linq(
         f

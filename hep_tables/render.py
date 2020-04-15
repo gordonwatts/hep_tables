@@ -10,10 +10,10 @@ from func_adl_xAOD import use_exe_servicex
 
 from .statements import (
     _monad_manager, statement_base, statement_constant, statement_df,
-    statement_select, statement_unwrap_list, statement_where, term_info)
+    statement_select, statement_unwrap_list, statement_where, term_info, _unwrap_list_df)
 from .utils import (
     _find_root_expr, _is_list, _type_replace, _unwrap_list,
-    new_var_name, to_args_from_keywords)
+    new_var_name, new_term, to_args_from_keywords, _count_list)
 
 
 class RenderException(Exception):
@@ -94,7 +94,7 @@ def _render_expresion_as_transform(tracker: _statement_tracker, context: render_
     else:
         assert len(statements) == 0, \
             f'Internal programming error - cannot deal with statements and term {term.term}'
-        vn = new_var_name()
+        vn = new_term(term.type)
         st_select = statement_select(a, term.type, vn,
                                      term, _is_list(tracker.sequence.rep_type))
         tracker.statements.append(st_select)
@@ -141,10 +141,10 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
                 root_expr, _ast_VarRef(f'{monad_ref}[{monad_index}]', object)):
 
             # The var we are going to loop over is a pointer to the sequence.
-            select_var = new_var_name()
             seq_as_object = tracker.sequence if not _is_list(tracker.sequence.rep_type) \
                 else statement_unwrap_list(tracker.sequence._ast, tracker.sequence.rep_type)
-            select_var_rep_ast = _ast_VarRef(select_var, seq_as_object.rep_type)
+            select_var = new_term(seq_as_object.rep_type)
+            select_var_rep_ast = _ast_VarRef(select_var.term, select_var.type)
 
             with tracker.substitute_ast(tracker.sequence._ast, select_var_rep_ast):
                 trm = _resolve_expr_inline(seq_as_object, expr, new_context, tracker)
@@ -259,18 +259,13 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
     def visit_ast_DataFrame(self, a: ast_DataFrame):
         assert False, 'We should never get this low in the chain'
 
-    def _unwrap_list_df(self, s: statement_base) -> Type:
-        if isinstance(s, statement_df):
-            return object
-        return _unwrap_list(s.rep_type)
-
     def visit_ast_Filter(self, a: ast_Filter):
         'Get the expression and apply the filter'
         self.visit(a.expr)
 
-        var_name = new_var_name()
+        var_name = new_term(_unwrap_list_df(self.sequence))
         with self.substitute_ast(self.sequence._ast,
-                                 _ast_VarRef(var_name, self._unwrap_list_df(self.sequence))):
+                                 _ast_VarRef(var_name.term, var_name.type)):
             term = _resolve_expr_inline(self.sequence, a.filter, self.context, self)
             st = statement_where(a, self.sequence.rep_type,
                                  var_name, term,
@@ -365,7 +360,6 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         elif isinstance(a.func, ast_FunctionPlaceholder):
             # We will embed this in a select statement. And the sequence items will
             # need to be explicitly referenced in the arguments.
-            var_name = new_var_name()
 
             def do_resolve(arg):
                 return _resolve_expr_inline(self.sequence, arg, self.context, self)
@@ -375,8 +369,9 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             if return_type is inspect.Signature.empty:
                 raise Exception(f"User Error: Function {name} needs return type python hints.")
 
+            var_name = new_term(self.sequence.rep_type)
             with self.substitute_ast(self.sequence._ast,
-                                     _ast_VarRef(var_name, self.sequence.rep_type)):
+                                     _ast_VarRef(var_name.term, var_name.type)):
                 resolved_args = [do_resolve(arg) for arg in a.args]
 
             for t in resolved_args:
@@ -395,11 +390,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
 
     def append_call(self, a: ast.AST, name_of_method: str, args: Optional[List[str]]) -> None:
         'Append a call onto the call chain that will look at this method'
-        # Build the function call
-        arg_text = "" if args is None else ", ".join([str(ag) for ag in args])
-        function_call = f'{name_of_method}({arg_text})'
-        iterator_name = new_var_name()
-        expr = f'{iterator_name}.{function_call}'
+        # Figure out the type information of this function call.
 
         # The result type of the sequence after we are done. Will depend on what we are currently
         # working on. To understand if we want to work on the top level or the sequence we have to
@@ -415,7 +406,15 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             raise RenderException(f'The method "{name_of_method}" requires as input '
                                   f'{str(f_input_type)} but is given {self.sequence.rep_type}')
 
-        working_on_sequence = _is_list(result_type) and _is_list(self.sequence.rep_type)
+        working_on_sequence = _is_list(result_type) and _is_list(self.sequence.rep_type) \
+            and _count_list(result_type) == _count_list(self.sequence.rep_type)
+
+        # Build the function call
+        arg_text = "" if args is None else ", ".join([str(ag) for ag in args])
+        function_call = f'{name_of_method}({arg_text})'
+        iterator_name = new_term(_unwrap_list(self.sequence.rep_type)) if working_on_sequence \
+            else new_term(self.sequence.rep_type)
+        expr = f'{iterator_name.term}.{function_call}'
 
         # Finally, build the call statement, and then update the current sequence.
         select = statement_select(a, result_type, iterator_name, term_info(expr, result_type),
@@ -487,7 +486,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                     self.sequence = s[-1]
                     return var_name
 
-            var_name = term_info(new_var_name(), object)
+            var_name = new_term(object)
             l_l = do_statements(s_left, left, var_name)
             l_r = do_statements(s_right, right, var_name)
 
@@ -498,7 +497,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             else:
                 expr = f'({l_l.term} {op} {l_r.term})'
                 rep_type = self.sequence.rep_type
-                self.statements.append(statement_select(a, bool, var_name.term,
+                self.statements.append(statement_select(a, bool, var_name,
                                                         term_info(expr, bool),
                                                         _is_list(rep_type)))
                 self.term_stack.append(term_info('main_sequence', List[bool]))
@@ -523,9 +522,9 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
         def visit_BoolOp(self, a: ast.BoolOp):
             'and or'
             assert len(a.values) == 2, 'Cannot do bool operations more than two operands'
-            var_name = new_var_name()
+            var_name = new_term(self.sequence.rep_type)
             with self.substitute_ast(self.sequence._ast,
-                                     _ast_VarRef(var_name, self.sequence.rep_type)):
+                                     _ast_VarRef(var_name.type, var_name.type)):
                 left = _resolve_expr_inline(self.sequence, a.values[0], self.context, self)
                 right = _resolve_expr_inline(self.sequence, a.values[1], self.context, self)
 
@@ -594,10 +593,10 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                             term_info(f'{_known_simple_math_functions[a.func.attr]}({v.term})',
                                       v.type))
                     else:
-                        var_name = new_var_name()
-                        expr = f'({_known_simple_math_functions[a.func.attr]}({var_name}))'
+                        var_name = new_term(v.type)
+                        expr = f'({_known_simple_math_functions[a.func.attr]}({var_name.term}))'
                         self.statements.append(
-                            statement_select(a, object, var_name, term_info(expr, object),
+                            statement_select(a, float, var_name, term_info(expr, object),
                                              _is_list(self.sequence.rep_type)))
                         self.term_stack.append(term_info('main_sequence', List[float]))
             elif isinstance(a.func, ast_Callable):
