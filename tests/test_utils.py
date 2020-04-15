@@ -214,6 +214,14 @@ def test_is_type_list_diff():
     assert not _is_of_type(List[int], List[float])
 
 
+def test_is_type_list_not_object():
+    assert not _is_of_type(List[int], object)
+
+
+def test_is_type_list_not_object_inverse():
+    assert not _is_of_type(object, List[int])
+
+
 def test_count_list_none():
     assert _count_list(int) == 0
 

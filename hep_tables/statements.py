@@ -2,18 +2,26 @@ from __future__ import annotations
 
 import ast
 import re
-from typing import List, Tuple, Type, Union
+from typing import List, Tuple, Type
 
 from func_adl import ObjectStream
 
-from hep_tables.utils import _index_text_tuple, new_var_name, _is_list, _unwrap_list
+from hep_tables.utils import _index_text_tuple, new_var_name, _unwrap_list, \
+    _type_replace, new_term, _is_of_type
 
 
-def _unwrap_list_df(s: statement_base) -> Type:
-    if isinstance(s, statement_df):
-        return object
-    return _unwrap_list(s.rep_type)
-
+# # TODO: Can we delete this at some point?
+# def _unwrap_list_df(s: statement_base) -> Type:
+#     if isinstance(s, statement_df):
+#         return object
+#     return _unwrap_list(s.rep_type)
+# class statement_unwrap_list(statement_base):
+#     '''
+#     A placeholder statement. Used to unwrap a type
+#     '''
+#     def __init__(self, ast_rep: ast.AST, rep_type: Type):
+#         assert _is_list(rep_type)
+#         statement_base.__init__(self, ast_rep, _unwrap_list(rep_type))
 
 class _monad_manager:
     '''
@@ -134,15 +142,14 @@ class statement_base:
     '''
     Base statement. Should never be created directly.
     '''
-    def __init__(self, ast_rep: ast.AST, rep_type: Type):
+    def __init__(self, ast_rep: ast.AST, input_sequence_type: Type,
+                 result_sequence_type: Type):
         self._ast = ast_rep
-        self.rep_type = rep_type
+        self._input_sequence_type = input_sequence_type
+        self._result_sequence_type = result_sequence_type
 
     def apply(self, stream: object) -> object:
         assert False, 'This should be overridden'
-
-    # def apply_as_text(self, var_name: str) -> str:
-    #     assert False, 'This should be overriden'
 
     def apply_as_function(self, stem: term_info) -> term_info:
         assert False, 'This should be overriden'
@@ -159,23 +166,16 @@ class statement_base:
         assert False, 'this should be overridden'
 
 
-class statement_unwrap_list(statement_base):
-    '''
-    A placeholder statement. Used to unwrap a type
-    '''
-    def __init__(self, ast_rep: ast.AST, rep_type: Type):
-        assert _is_list(rep_type)
-        statement_base.__init__(self, ast_rep, _unwrap_list(rep_type))
-
-
 class statement_df(statement_base):
     '''
     Represents the dataframe/EventDataSet that is the source of all data.
+    We have no input type, and our result is an "event" object.
     '''
     def __init__(self, ast_rep: ast.AST):
-        statement_base.__init__(self, ast_rep, object)
+        statement_base.__init__(self, ast_rep, object, object)
 
     def apply(self, stream: object) -> object:
+        # Note that stream is ignored here.
         from dataframe_expressions import ast_DataFrame
         from .hep_table import xaod_table
         assert isinstance(self._ast, ast_DataFrame)
@@ -194,28 +194,81 @@ class statement_df(statement_base):
         return "EventSource"
 
 
-def _render_as_function(s: Union[statement_select, statement_where],
-                        var_name: term_info, operation: str) -> term_info:
+class statement_base_iterator(_monad_manager, statement_base):
     '''
-    Helper function to render as a inline function
+    Base class for statements that have iterators
     '''
-    # Pass all monad referces forward, we do not resolve them.
-    monad_refs = s._monad_ref
-    s._monad_ref = []
-    if s._act_on_sequence:
-        inner_var = new_var_name()
-        inner_expr = s._func.term.replace(s._iterator.term, inner_var)
-        expr = s.render(var_name.term,
-                        f'{var_name.term}.{operation}(lambda {inner_var}: {inner_expr})')
-        return term_info(expr, s.rep_type, monad_refs + var_name.monad_refs)
-    else:
-        return term_info(s.render(var_name.term,
-                         s._func.term.replace(s._iterator.term, var_name.term)),
-                         s.rep_type,
-                         monad_refs)
+    def __init__(self, ast_rep: ast.AST, input_sequence_type: Type,
+                 result_sequence_type: Type, iterator: term_info,
+                 function: Type, pass_through: bool):
+        '''
+        Arguments:
+            pass_through        Input and output types are the same, function result
+                                is not checked.
+        '''
+        statement_base.__init__(self, ast_rep, input_sequence_type,
+                                result_sequence_type)
+        _monad_manager.__init__(self)
+        self._iterator = iterator
+        self._func = function
+
+        # Check that the types make sense. The earlier we catch this
+        # the easier it is to debug.
+        final_type = _type_replace(input_sequence_type,
+                                   iterator.type,
+                                   function.type)
+        assert final_type is not None, \
+            f'Internal error - cannot find iterator type {iterator.type} ' \
+            'in sequence type {rep_type}'
+
+        assert pass_through or _is_of_type(final_type, result_sequence_type), \
+            'Internal error: types not consistent in iterator statement: ' \
+            f'input: {input_sequence_type}, result: {result_sequence_type}, ' \
+            f'iterator: {iterator.type}, function: {function.type}'
+
+    def _inner_lambda(self, iter: term_info, op: str) -> term_info:
+        '''
+        Helper method to render the inner lambda text, which is
+        the same in both ObjectStream and text stream cases.
+        '''
+        # Return a properly nested function!
+        return self._render_inner(self._input_sequence_type, iter, op)
+
+    def _render_as_function(self, iter: term_info, op: str,
+                            render_monads: bool = False) -> term_info:
+        '''
+        Helper function to render as a inline function ready to use in code.
+        '''
+        assert _is_of_type(self._iterator.type, iter.type), 'Internal Error: types incompatible'
+
+        # Pass all monad referces forward, we do not resolve them.
+        monad_refs = self._monad_ref
+        if not render_monads:
+            self._monad_ref = []
+        inner_expr = self._inner_lambda(iter, op)
+        inner_expr_txt = self.render(iter.term, inner_expr.term)
+        self._monad_ref = monad_refs
+        return term_info(inner_expr_txt, inner_expr.type, monad_refs + iter.monad_refs)
+
+    def _render_inner(self, in_type: Type, iter: term_info, op: str) -> term_info:
+        '''
+        Recursively nest the statement as needed.
+        '''
+        if _is_of_type(in_type, self._iterator.type):
+            inner_func = self._func.term
+            inner_func = inner_func.replace(self._iterator.term, iter.term)
+            return term_info(inner_func, self._func.type)
+        else:
+            v = new_term(_unwrap_list(in_type))
+            unwrapped = _unwrap_list(in_type)
+            inner_func = self._render_inner(unwrapped, v, op)
+            use_op = op if _is_of_type(unwrapped, self._iterator.type) else 'Select'
+            inner_type = inner_func.type if use_op == 'Select' else unwrapped
+            return term_info(f'{iter.term}.{use_op}(lambda {v.term}: {inner_func.term})',
+                             List[inner_type])
 
 
-class statement_select(_monad_manager, statement_base):
+class statement_select(statement_base_iterator):
     '''
     Represents a transformation or mapping. Two types are handled:
 
@@ -223,92 +276,67 @@ class statement_select(_monad_manager, statement_base):
         - Sequence of objects tranformation:
             df -> df.Select(lambda e1: e1.Select(lambda e2: e2.jets()))
     '''
-    def __init__(self, ast_rep: ast.AST, rep_type: Type, iterator: term_info,
-                 function_text: term_info, is_sequence_of_objects: bool):
+    def __init__(self, ast_rep: ast.AST, input_sequence_type: Type,
+                 result_sequence_type, iterator: term_info,
+                 function: term_info):
         '''
         Creates a select statement.
         '''
-        statement_base.__init__(self, ast_rep, rep_type)
-        _monad_manager.__init__(self)
-        self._iterator = iterator
-        self._func = function_text
-        self._act_on_sequence = is_sequence_of_objects
-
-    def _inner_lambda_text(self) -> str:
-        '''
-        Helper method
-        '''
-        if self._act_on_sequence:
-            outter_var_name = new_var_name()
-            inner_func = self.render(outter_var_name, f'{outter_var_name}'
-                                     f'.Select(lambda {self._iterator.term}: {self._func.term})')
-            lambda_text = f'lambda {outter_var_name}: {inner_func}'
-        else:
-            inner_func = self.render(self._iterator.term, self._func.term)
-            lambda_text = f'lambda {self._iterator.term}: {inner_func}'
-        return lambda_text
+        statement_base_iterator.__init__(self, ast_rep, input_sequence_type,
+                                         result_sequence_type, iterator,
+                                         function, False)
 
     def apply(self, seq: object) -> ObjectStream:
-        # Build the lambda
         assert isinstance(seq, ObjectStream), 'Internal error'
-        return seq.Select(self._inner_lambda_text())
+        inner_lambda = self._render_as_function(self._iterator, 'Select', True)
+        return seq.Select(f'lambda {self._iterator.term}: {inner_lambda.term}')
 
     def __str__(self):
-        return f'  .Select({self._inner_lambda_text()})'
+        return f'  .Select({self._inner_lambda(self._iterator, "Select").term})'
 
     def apply_as_function(self, var_name: term_info) -> term_info:
-        return _render_as_function(self, var_name, 'Select')
+        return self._render_as_function(var_name, 'Select')
 
 
-class statement_where(_monad_manager, statement_base):
+class statement_where(statement_base_iterator):
     '''
     Represents a filtering. Two forms are handled.
         - Object filter: df -> df.Where(lambda e: e.jets())
         - Sequence of objects filter:
             df -> df.Select(lambda e1: e1.Where(lambda e2: e2.jets()))
     '''
-    def __init__(self, ast_rep: ast.AST, rep_type: Type, iterator: term_info,
-                 function_term: term_info, is_sequence_of_objects: bool):
-        statement_base.__init__(self, ast_rep, rep_type)
-        _monad_manager.__init__(self)
-        self._iterator = iterator
-        self._func = function_term
-        self._act_on_sequence = is_sequence_of_objects
+    def __init__(self, ast_rep: ast.AST, input_sequence_type: Type,
+                 iterator: term_info,
+                 function: term_info):
 
+        # Get some object invarients setup right
+        assert function.type == bool, f'Where function must be type bool, not {function.type}'
+
+        statement_base_iterator.__init__(self, ast_rep, input_sequence_type,
+                                         input_sequence_type, iterator,
+                                         function, True)
+
+        # TODO: does this belong here or in the select statement?
         for t in self._func.monad_refs:
             self.set_monad_ref(t)
             self.prev_statement_is_monad()
 
-    def _inner_lambda_text(self) -> str:
-        if self._act_on_sequence:
-            outter_var_name = new_var_name()
-            full_where_tuple = self.render(
-                outter_var_name, f'{outter_var_name}.Where(lambda {self._iterator.term}: '
-                f'{self._func.term})')
-            lambda_text = f'lambda {outter_var_name}: {full_where_tuple}'
-            return lambda_text
-        else:
-            lambda_text = f'lambda {self._iterator.term}: ' \
-                f'{self.render(self._iterator.term, self._func.term)}'
-            return lambda_text
-
     def apply(self, seq: object) -> ObjectStream:
-        # Build the lambda
         assert isinstance(seq, ObjectStream), 'Internal error'
-        if self._act_on_sequence:
-            return seq.Select(self._inner_lambda_text())
+        inner_lambda = self._render_as_function(self._iterator, 'Where', True)
+        if 'Where' in inner_lambda.term:
+            return seq.Select(f'lambda {self._iterator.term}: {inner_lambda.term}')
         else:
-            return seq.Where(self._inner_lambda_text())
+            return seq.Where(f'lambda {self._iterator.term}: {inner_lambda.term}')
 
     def apply_as_function(self, var_name: term_info) -> term_info:
-        assert self._act_on_sequence, 'Not sure how Where works on single object'
-        return _render_as_function(self, var_name, 'Where')
+        assert not _is_of_type(self._input_sequence_type, self._iterator.type), \
+            'Where statement must be in a sequence, not at top level'
+
+        return self._render_as_function(var_name, 'Where')
 
     def __str__(self):
-        if self._act_on_sequence:
-            return f'  .Select({self._inner_lambda_text()})'
-        else:
-            return f'  .Where({self._inner_lambda_text()})'
+        return f'  .Select({self._inner_lambda(self._iterator, "Where").term})'
 
 
 class statement_constant(statement_base):
@@ -317,8 +345,11 @@ class statement_constant(statement_base):
     directly as input for the next thing.
     '''
     def __init__(self, ast_rep: ast.AST, value: object, rep_type: Type):
-        statement_base.__init__(self, ast_rep, rep_type)
+        statement_base.__init__(self, ast_rep, object, rep_type)
         self._value = value
 
     def apply(self, stream: object) -> object:
         return self._value
+
+    def apply_as_function(self, stem: term_info) -> term_info:
+        return term_info(str(self._value), self._result_sequence_type)

@@ -183,7 +183,7 @@ def _is_of_type(t1: Type, t2: Type) -> bool:
     if t1 == t2:
         return True
 
-    if t2 == object:
+    if t2 == object and not _is_list(t1):
         return True
 
     if not _same_generic_type(t1, t2):
