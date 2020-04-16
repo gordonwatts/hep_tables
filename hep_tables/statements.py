@@ -148,6 +148,10 @@ class statement_base:
         self._input_sequence_type = input_sequence_type
         self._result_sequence_type = result_sequence_type
 
+    @property
+    def result_type(self) -> Type:
+        return self._result_sequence_type
+
     def apply(self, stream: object) -> object:
         assert False, 'This should be overridden'
 
