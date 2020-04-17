@@ -1,6 +1,7 @@
 from __future__ import annotations
 import ast
 import inspect
+from logging import currentframe
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from dataframe_expressions import (
@@ -10,10 +11,10 @@ from func_adl_xAOD import use_exe_servicex
 
 from .statements import (
     _monad_manager, statement_base, statement_constant, statement_df,
-    statement_select, statement_unwrap_list, statement_where, term_info, _unwrap_list_df)
+    statement_select, statement_where, term_info)
 from .utils import (
     _find_root_expr, _is_list, _type_replace, _unwrap_list,
-    new_var_name, new_term, to_args_from_keywords, _count_list)
+    new_var_name, new_term, to_args_from_keywords, _count_list, _is_of_type)
 
 
 class RenderException(Exception):
@@ -100,8 +101,9 @@ def _render_expresion_as_transform(tracker: _statement_tracker, context: render_
         assert len(statements) == 0, \
             f'Internal programming error - cannot deal with statements and term {term.term}'
         vn = new_term(term.type)
-        st_select = statement_select(a, term.type, vn,
-                                     term, _is_list(tracker.sequence.rep_type))
+        in_type = tracker.sequence.result_type
+        out_type = in_type
+        st_select = statement_select(a, in_type, out_type, vn, term)
         tracker.statements.append(st_select)
         tracker.sequence = st_select
 
@@ -117,23 +119,24 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
     root_expr = _find_root_expr(expr, tracker.sequence._ast)
     if root_expr is tracker.sequence._ast:
         # Just continuing on with the sequence already in place.
-        assert _is_list(tracker.sequence.rep_type) \
+        assert _is_list(tracker.sequence.result_type) \
             or isinstance(tracker.sequence, statement_unwrap_list)
-        if _is_list(tracker.sequence.rep_type):
+        if _is_list(tracker.sequence.result_type):
             s, t = _render_expression(
-                statement_unwrap_list(tracker.sequence._ast, tracker.sequence.rep_type),
+                statement_unwrap_list(tracker.sequence._ast, tracker.sequence.result_type),
                 expr, new_context, tracker)
         else:
             s, t = _render_expression(tracker.sequence, expr, new_context, tracker)
         assert t.term == 'main_sequence'
         if len(s) > 0:
             tracker.statements += s
-            if _is_list(tracker.sequence.rep_type):
-                # TODO: Clearly a KLUDGE KLUDGE
-                assert isinstance(s[-1], statement_select) \
-                    or isinstance(s[-1], statement_where)
-                s[-1]._act_on_sequence = True
-                s[-1].rep_type = List[tracker.sequence.rep_type]
+            assert False
+            # if _is_list(tracker.sequence.result_type):
+            # TODO: Clearly a KLUDGE KLUDGE
+            # assert isinstance(s[-1], statement_select) \
+            #     or isinstance(s[-1], statement_where)
+            # s[-1]._act_on_sequence = True
+            # s[-1].result_type = List[tracker.sequence.result_type]
             tracker.sequence = s[-1]
         return t
 
@@ -146,9 +149,9 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
                 root_expr, _ast_VarRef(term_info(f'{monad_ref}[{monad_index}]', object))):
 
             # The var we are going to loop over is a pointer to the sequence.
-            seq_as_object = tracker.sequence if not _is_list(tracker.sequence.rep_type) \
-                else statement_unwrap_list(tracker.sequence._ast, tracker.sequence.rep_type)
-            select_var = new_term(seq_as_object.rep_type)
+            seq_as_object = tracker.sequence if not _is_list(tracker.sequence.result_type) \
+                else statement_unwrap_list(tracker.sequence._ast, tracker.sequence.result_type)
+            select_var = new_term(seq_as_object.result_type)
             select_var_rep_ast = _ast_VarRef(select_var)
 
             with tracker.substitute_ast(tracker.sequence._ast, select_var_rep_ast):
@@ -156,17 +159,17 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
 
         st = statement_select(a, List[trm.type],
                               select_var, trm,
-                              _is_list(tracker.sequence.rep_type))
+                              _is_list(tracker.sequence.result_type))
         st.prev_statement_is_monad()
         st.set_monad_ref(monad_ref)
         tracker.statements.append(st)
         tracker.sequence = st
-        return term_info('main_sequence', st.rep_type)
+        return term_info('main_sequence', st.result_type)
 
     else:
         # If root_expr is none, then whatever it is is a constant. So just select it.
         _render_expresion_as_transform(tracker, context, expr)
-        return term_info('main_sequence', tracker.sequence.rep_type)
+        return term_info('main_sequence', tracker.sequence.result_type)
 
 
 class _statement_tracker:
@@ -268,13 +271,14 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         'Get the expression and apply the filter'
         self.visit(a.expr)
 
-        var_name = new_term(_unwrap_list_df(self.sequence))
+        seq_type = self.sequence.result_type
+        var_name = new_term(_unwrap_list(seq_type) if _is_list(seq_type) else seq_type)
         with self.substitute_ast(self.sequence._ast,
                                  _ast_VarRef(var_name)):
+            # We will put this inside a Where statement, so instead of a sequence,
+            # we will be dealing with an unwrapped sequence.
             term = _resolve_expr_inline(self.sequence, a.filter, self.context, self)
-            st = statement_where(a, self.sequence.rep_type,
-                                 var_name, term,
-                                 _is_list(self.sequence.rep_type))
+            st = statement_where(a, self.sequence.result_type, var_name, term)
             # This is a bit of a kudge
             if len(self.statements) > 0:
                 if self.statements[-1].has_monads():
@@ -374,7 +378,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             if return_type is inspect.Signature.empty:
                 raise Exception(f"User Error: Function {name} needs return type python hints.")
 
-            var_name = new_term(self.sequence.rep_type)
+            var_name = new_term(self.sequence.result_type)
             with self.substitute_ast(self.sequence._ast,
                                      _ast_VarRef(var_name)):
                 resolved_args = [do_resolve(arg) for arg in a.args]
@@ -387,7 +391,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
 
             st = statement_select(a, return_type, var_name,
                                   term_info(f'{name}({args})', return_type),
-                                  _is_list(self.sequence.rep_type))
+                                  _is_list(self.sequence.result_type))
             self.statements.append(st)
             self.sequence = st
         else:
@@ -406,24 +410,24 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         #   object -> List[int] - Then we are not going to operate on a sequence.
 
         f_input_type, f_result_type = _type_system(name_of_method)
-        result_type = _type_replace(self.sequence.rep_type, f_input_type, f_result_type)
+        result_type = _type_replace(self.sequence.result_type, f_input_type, f_result_type)
         if result_type is None:
             raise RenderException(f'The method "{name_of_method}" requires as input '
-                                  f'{str(f_input_type)} but is given {self.sequence.rep_type}')
+                                  f'{str(f_input_type)} but is given {self.sequence.result_type}')
 
-        working_on_sequence = _is_list(result_type) and _is_list(self.sequence.rep_type) \
-            and _count_list(result_type) == _count_list(self.sequence.rep_type)
+        working_on_sequence = _is_list(result_type) and _is_list(self.sequence.result_type) \
+            and _count_list(result_type) == _count_list(self.sequence.result_type)
 
         # Build the function call
         arg_text = "" if args is None else ", ".join([str(ag) for ag in args])
         function_call = f'{name_of_method}({arg_text})'
-        iterator_name = new_term(_unwrap_list(self.sequence.rep_type)) if working_on_sequence \
-            else new_term(self.sequence.rep_type)
+        iterator_name = new_term(_unwrap_list(self.sequence.result_type)) if working_on_sequence \
+            else new_term(self.sequence.result_type)
         expr = f'{iterator_name.term}.{function_call}'
 
-        # Finally, build the call statement, and then update the current sequence.
-        select = statement_select(a, result_type, iterator_name, term_info(expr, result_type),
-                                  working_on_sequence)
+        # Finally, build the call statement as a select, and then update the current sequence.
+        select = statement_select(a, self.sequence.result_type, result_type,
+                                  iterator_name, term_info(expr, f_result_type))
         self.statements.append(select)
         self.sequence = select
 
@@ -470,42 +474,47 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             s_left, left = _render_expression(self.sequence, a_left, self.context, self)
             s_right, right = _render_expression(self.sequence, a_right, self.context, self)
 
-            assert (len(s_right) == 0 or not _is_list(s_right[-1].rep_type)) \
-                or (len(s_left) == 0 or not _is_list(s_left[-1].rep_type))
+            assert (len(s_right) == 0 or not _is_list(s_right[-1].result_type)) \
+                or (len(s_left) == 0 or not _is_list(s_left[-1].result_type))
 
-            def do_statements(s: List[statement_base], t: term_info, var_name: term_info) \
-                    -> term_info:
+            def do_statements(s: List[statement_base], t: term_info) \
+                    -> Tuple[term_info, term_info]:
                 if t.term != 'main_sequence':
-                    return t
+                    return t, t
                 if len(s) == 0:
-                    return var_name
-                if not _is_list(s[-1].rep_type):
-                    stem = var_name
+                    r = new_term(self.sequence.result_type)
+                    return r, r
+                if not _is_list(s[-1].result_type):
+                    stem = new_term(self.sequence.result_type)
+                    r = stem
                     for single in s:
                         stem = single.apply_as_function(stem)
-                    return stem
+                    return r, stem
                 else:
                     # TODO: if we remove this if block, then this look like _resolve_inline.
                     # This tests fail if we do that - understand if we really need this.
                     self.statements += s
                     self.sequence = s[-1]
-                    return var_name
+                    r = new_term(_unwrap_list(self.sequence.result_type))
+                    return r, r
 
-            var_name = new_term(object)
-            l_l = do_statements(s_left, left, var_name)
-            l_r = do_statements(s_right, right, var_name)
+            l_l_iter, l_l = do_statements(s_left, left)
+            l_r_iter, l_r = do_statements(s_right, right)
 
             # Is the compare between two "terms" we know, or a sequence?
-            op = _known_operators[type(operator)]
+            op, op_type = _known_operators[type(operator)]
             if left.term != 'main_sequence' and right.term != 'main_sequence':
-                self.term_stack.append(term_info(f'({l_l.term} {op} {l_r.term})', left.type))
+                self.term_stack.append(term_info(f'({l_l.term} {op} {l_r.term})', op_type))
             else:
                 expr = f'({l_l.term} {op} {l_r.term})'
-                rep_type = self.sequence.rep_type
-                self.statements.append(statement_select(a, bool, var_name,
-                                                        term_info(expr, bool),
-                                                        _is_list(rep_type)))
-                self.term_stack.append(term_info('main_sequence', List[bool]))
+                in_type = self.sequence.result_type
+                out_type = _type_replace(in_type, l_l.type, op_type)
+                out_type = op_type if out_type is None else out_type
+                self.statements.append(statement_select(a, in_type, out_type,
+                                                        l_l_iter,
+                                                        term_info(expr, op_type)))
+                self.sequence = self.statements[-1]
+                self.term_stack.append(term_info('main_sequence', out_type))
 
         def visit_Compare(self, a: ast.Compare):
             # Need better protection here - if visit doesn't render something
@@ -527,14 +536,18 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
         def visit_BoolOp(self, a: ast.BoolOp):
             'and or'
             assert len(a.values) == 2, 'Cannot do bool operations more than two operands'
-            var_name = new_term(self.sequence.rep_type)
+            var_name = new_term(self.sequence.result_type)
             with self.substitute_ast(self.sequence._ast,
                                      _ast_VarRef(var_name)):
                 left = _resolve_expr_inline(self.sequence, a.values[0], self.context, self)
                 right = _resolve_expr_inline(self.sequence, a.values[1], self.context, self)
 
-            expr = f'({left.term}) {_known_operators[type(a.op)]} ({right.term})'
-            st = statement_select(a, bool, var_name, term_info(expr, bool), False)
+            op, op_type = _known_operators[type(a.op)]
+            expr = f'({left.term}) {op} ({right.term})'
+            in_type = self.sequence.result_type
+            out_type = _type_replace(in_type, _unwrap_list(in_type), bool)
+            itr_unwrapped = term_info(var_name.term, _unwrap_list(in_type))
+            st = statement_select(a, in_type, out_type, itr_unwrapped, term_info(expr, bool))
             self.statements.append(st)
             self.sequence = st
             self.term_stack.append(term_info('main_sequence', List[bool]))
@@ -563,7 +576,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             # The stream is now the term we want to use. In order to do this we'll now have
             # to deal with a sequence reference. This is the main sequence, so we want to leave
             # that as the term.
-            self.term_stack.append(term_info("main_sequence", self.sequence.rep_type))
+            self.term_stack.append(term_info("main_sequence", self.sequence.result_type))
 
         def visit_Attribute(self, a: ast.Attribute):
             '''
@@ -598,12 +611,14 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                             term_info(f'{_known_simple_math_functions[a.func.attr]}({v.term})',
                                       v.type))
                     else:
-                        var_name = new_term(v.type)
+                        var_name = new_term(float)
                         expr = f'({_known_simple_math_functions[a.func.attr]}({var_name.term}))'
+                        # An exception will be thrown here if the input sequence isn't float.
                         self.statements.append(
-                            statement_select(a, float, var_name, term_info(expr, object),
-                                             _is_list(self.sequence.rep_type)))
-                        self.term_stack.append(term_info('main_sequence', List[float]))
+                            statement_select(a, self.sequence.result_type,
+                                             self.sequence.result_type,
+                                             var_name, term_info(expr, float)))
+                        self.term_stack.append(term_info('main_sequence', self.sequence.result_type))
             elif isinstance(a.func, ast_Callable):
                 assert len(a.args) == 1, "internal error - expect one arg for top level labmda"
 
@@ -628,24 +643,25 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
     return r.statements, \
         r.term_stack[0] if len(r.term_stack) != 0 \
         else term_info('main_sequence',
-                       r.statements[-1].rep_type if len(r.statements) > 0
-                       else current_sequence.rep_type)
+                       r.statements[-1].result_type if len(r.statements) > 0
+                       else current_sequence.result_type)
 
 
-# Known operators and their "text" rep.
-_known_operators: Dict[Type, str] = {
-    ast.Div: '/',
-    ast.Sub: '-',
-    ast.Mult: '*',
-    ast.Add: '+',
-    ast.Gt: '>',
-    ast.GtE: '>=',
-    ast.Lt: '<',
-    ast.LtE: '<=',
-    ast.Eq: '==',
-    ast.NotEq: '!=',
-    ast.And: 'and',
-    ast.Or: 'or',
+# Known operators and their "text" rep, and the default return type
+# of their calculation.
+_known_operators: Dict[Type, Tuple[str, Type]] = {
+    ast.Div: ('/', float),
+    ast.Sub: ('-', float),
+    ast.Mult: ('*', float),
+    ast.Add: ('+', float),
+    ast.Gt: ('>', bool),
+    ast.GtE: ('>=', bool),
+    ast.Lt: ('<', bool),
+    ast.LtE: ('<=', bool),
+    ast.Eq: ('==', bool),
+    ast.NotEq: ('!=', bool),
+    ast.And: ('and', bool),
+    ast.Or: ('or', bool),
     }
 
 
@@ -661,22 +677,19 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
         context                 The render context to pass through in case rendering is needed.
         p_tracker               Parent tracker to keep the chain for lookups going
     '''
-    # TODO: this should be resolve_inline_expression, and should be used in several places
-    # in the above code. REFACTOR!!!
-    # How we do the filter depends on what we are looking at
+    # We need to drive the select/where inline generation.
     # 1. object (implied sequence, one item per event):
     #       d.Where(lambda e: e > 10)
     # 2. List[object] (explicit sequence, one list per event):
     #       d.Select(lambda e: e.Where(labmda ep: ep > 10))
-    if _is_list(curret_sequence.rep_type):
-        # Since this guy is a sequence, we have to turn it into not-a sequence for processing.
-        filter_sequence, trm = _render_expression(
-            statement_unwrap_list(curret_sequence._ast, curret_sequence.rep_type), expr,
-            context, p_tracker)
-        # act_on_sequence = True
-    else:
-        filter_sequence, trm = _render_expression(curret_sequence, expr, context, p_tracker)
-        # act_on_sequence = False
+    # if _is_list(curret_sequence.result_type):
+    #     # Since this guy is a sequence, we have to turn it into not-a sequence for processing.
+    #     filter_sequence, trm = _render_expression(
+    #         statement_unwrap_list(curret_sequence._ast, curret_sequence.result_type), expr,
+    #         context, p_tracker)
+    #     # act_on_sequence = True
+    # else:
+    filter_sequence, trm = _render_expression(curret_sequence, expr, context, p_tracker)
 
     assert (trm.term != 'main_sequence' and len(filter_sequence) == 0) \
         or (trm.term == 'main_sequence' and len(filter_sequence) > 0)
@@ -688,9 +701,13 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
             or (filter_sequence[0]
                 .apply_as_function(term_info('bogus', object)).term.find('bogus') < 0)
         assert a_resolved is None or isinstance(a_resolved, _ast_VarRef)
-        stem = a_resolved.term if a_resolved is not None \
-            else term_info('bogus', object)
-        for s in filter_sequence:
+
+        base_type = a_resolved.term.type if a_resolved is not None else object
+        base_name = a_resolved.term.term if a_resolved is not None else 'bogus'
+        stem = term_info(base_name, base_type)
+        prep_statement = [sw.unwrap() for sw in filter_sequence] \
+            if _is_list(curret_sequence.result_type) else filter_sequence
+        for s in prep_statement:
             stem = s.apply_as_function(stem)
         return stem
     else:
@@ -722,7 +739,7 @@ def _type_system(n: str) -> Tuple[Type, Type]:
         arg_type    What does it operate on (list or object)?
         rtn_type    What does it return
     '''
-    return _known_types[n] if n in _known_types else (object, object)
+    return _known_types[n] if n in _known_types else (object, float)
 
 
 # List of math functions we translate into something similar in the LINQ code.

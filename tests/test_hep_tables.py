@@ -33,39 +33,6 @@ def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
     assert clean_linq(json['selection']) == txt
 
 
-# def test_cache_on_by_default(mocker):
-#     r = mocker.patch('func_adl_xAOD.use_exe_servicex')
-#     df = xaod_table(f)
-#     seq = df.jets.pt
-#     make_local(seq)
-
-#     r.assert_called_once()
-#     kwargs = r.call_args[1]
-#     assert kwargs['cached_results_OK'] is True
-
-
-# def test_cache_on(mocker):
-#     r = mocker.patch('func_adl_xAOD.use_exe_servicex')
-#     df = xaod_table(f)
-#     seq = df.jets.pt
-#     make_local(seq, force_rerun=True)
-
-#     r.assert_called_once()
-#     kwargs = r.call_args[1]
-#     assert kwargs['cached_results_OK'] is True
-
-
-# def test_cache_off(mocker):
-#     r = mocker.patch('func_adl_xAOD.use_exe_servicex')
-#     df = xaod_table(f)
-#     seq = df.jets.pt
-#     make_local(seq, force_rerun=False)
-
-#     r.assert_called_once()
-#     kwargs = r.call_args[1]
-#     assert kwargs['cached_results_OK'] is False
-
-
 def test_collect_pts_as_call(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df.jets().pt()

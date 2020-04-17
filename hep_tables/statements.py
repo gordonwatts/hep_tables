@@ -7,7 +7,7 @@ from typing import List, Tuple, Type
 from func_adl import ObjectStream
 
 from hep_tables.utils import _index_text_tuple, new_var_name, _unwrap_list, \
-    _type_replace, new_term, _is_of_type
+    _type_replace, new_term, _is_of_type, _is_list
 
 
 # # TODO: Can we delete this at some point?
@@ -15,13 +15,6 @@ from hep_tables.utils import _index_text_tuple, new_var_name, _unwrap_list, \
 #     if isinstance(s, statement_df):
 #         return object
 #     return _unwrap_list(s.rep_type)
-# class statement_unwrap_list(statement_base):
-#     '''
-#     A placeholder statement. Used to unwrap a type
-#     '''
-#     def __init__(self, ast_rep: ast.AST, rep_type: Type):
-#         assert _is_list(rep_type)
-#         statement_base.__init__(self, ast_rep, _unwrap_list(rep_type))
 
 class _monad_manager:
     '''
@@ -169,6 +162,14 @@ class statement_base:
     def has_monads(self) -> bool:
         assert False, 'this should be overridden'
 
+    def unwrap(self) -> statement_base:
+        '''
+        If we operate on a list, then produce a statement that operates on whatever
+        is inside that list. If we were List[object] -> List[bool], and our iterator was
+        object, then return the same statement but that works object -> bool.
+        '''
+        assert False, 'This should be overriden'
+
 
 class statement_df(statement_base):
     '''
@@ -238,21 +239,24 @@ class statement_base_iterator(_monad_manager, statement_base):
         # Return a properly nested function!
         return self._render_inner(self._input_sequence_type, iter, op)
 
-    def _render_as_function(self, iter: term_info, op: str,
+    def _render_as_function(self, sequence: term_info, op: str,
                             render_monads: bool = False) -> term_info:
         '''
         Helper function to render as a inline function ready to use in code.
         '''
-        assert _is_of_type(self._iterator.type, iter.type), 'Internal Error: types incompatible'
+        assert _is_of_type(self._input_sequence_type, sequence.type), \
+            'Internal Error: types incompatible'
 
         # Pass all monad referces forward, we do not resolve them.
         monad_refs = self._monad_ref
         if not render_monads:
             self._monad_ref = []
-        inner_expr = self._inner_lambda(iter, op)
-        inner_expr_txt = self.render(iter.term, inner_expr.term)
+
+        # Next, we have to code up the outter statement
+        inner_expr = self._inner_lambda(sequence, op)
+        inner_expr_txt = self.render(sequence.term, inner_expr.term)
         self._monad_ref = monad_refs
-        return term_info(inner_expr_txt, inner_expr.type, monad_refs + iter.monad_refs)
+        return term_info(inner_expr_txt, inner_expr.type, monad_refs + sequence.monad_refs)
 
     def _render_inner(self, in_type: Type, iter: term_info, op: str) -> term_info:
         '''
@@ -270,6 +274,20 @@ class statement_base_iterator(_monad_manager, statement_base):
             inner_type = inner_func.type if use_op == 'Select' else unwrapped
             return term_info(f'{iter.term}.{use_op}(lambda {v.term}: {inner_func.term})',
                              List[inner_type])
+
+    def clone_with_types(self, type_input: Type, type_output: Type) -> statement_base_iterator:
+        assert False, 'This needs to be overridden'
+
+    def unwrap(self) -> statement_base:
+        assert _is_list(self._input_sequence_type), \
+            f'Cannot unwrap list of type {self._input_sequence_type}'
+        assert _is_list(self._result_sequence_type), \
+            f'Cannot unwrap list of type {self._input_sequence_type}'
+
+        new_input_type = _unwrap_list(self._input_sequence_type)
+        new_result_type = _unwrap_list(self._result_sequence_type)
+
+        return self.clone_with_types(new_input_type, new_result_type)
 
 
 class statement_select(statement_base_iterator):
@@ -290,16 +308,22 @@ class statement_select(statement_base_iterator):
                                          result_sequence_type, iterator,
                                          function, False)
 
+    def clone_with_types(self, type_input: Type, type_output: Type) -> statement_base_iterator:
+        return statement_select(self._ast, type_input, type_output,
+                                self._iterator, self._func)
+
     def apply(self, seq: object) -> ObjectStream:
         assert isinstance(seq, ObjectStream), 'Internal error'
-        inner_lambda = self._render_as_function(self._iterator, 'Select', True)
+        inner_lambda = self._render_as_function(term_info(self._iterator.term,
+                                                          self._input_sequence_type),
+                                                'Select', True)
         return seq.Select(f'lambda {self._iterator.term}: {inner_lambda.term}')
 
     def __str__(self):
         return f'  .Select({self._inner_lambda(self._iterator, "Select").term})'
 
-    def apply_as_function(self, var_name: term_info) -> term_info:
-        return self._render_as_function(var_name, 'Select')
+    def apply_as_function(self, sequence: term_info) -> term_info:
+        return self._render_as_function(sequence, 'Select')
 
 
 class statement_where(statement_base_iterator):
@@ -325,9 +349,15 @@ class statement_where(statement_base_iterator):
             self.set_monad_ref(t)
             self.prev_statement_is_monad()
 
+    def clone_with_types(self, type_input: Type, type_output: Type) -> statement_base_iterator:
+        return statement_where(self._ast, type_input,
+                               self._iterator, self._func)
+
     def apply(self, seq: object) -> ObjectStream:
         assert isinstance(seq, ObjectStream), 'Internal error'
-        inner_lambda = self._render_as_function(self._iterator, 'Where', True)
+        inner_lambda = self._render_as_function(term_info(self._iterator.term,
+                                                          self._input_sequence_type),
+                                                'Where', True)
         if 'Where' in inner_lambda.term:
             return seq.Select(f'lambda {self._iterator.term}: {inner_lambda.term}')
         else:
