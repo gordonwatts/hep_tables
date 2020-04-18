@@ -265,7 +265,7 @@ def test_map_statement_output_format(good_transform_request, reduce_wait_time, f
         .Select("lambda e1: (e1.tracks(), e1)")
         .Select("lambda e6: (e6[0].Where(lambda e7: e7.pt() > 20), e6[1])")
         .Select("lambda e2: e2[0].Select(lambda e3: e2[1].mcs())")
-        .Select("lambda e4: e4.Select(lambda e5: e5.pt())")
+        .Select("lambda e4: e4.Select(lambda e5: e5.Select(lambda e8: e8.pt()))")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert json == txt
 
@@ -413,10 +413,11 @@ def test_count_of_sequence_inside_filter_2maps(good_transform_request, reduce_wa
     json = good_transform_request
     txt = translate_linq(
         f
-        .Select("lambda e1: (e1.jets(), e1)")
-        .Select("lambda e14: e14[0].Select(lambda e3: "
-                "e14[1]"
-                ".Electrons()"
-                ".Count())")
+        .Select("lambda e1: (e1.Electrons('Electrons'), e1)")
+        .Select("lambda e2: e2[0].Where(lambda e3: "
+                "e2[1]"
+                ".TruthParticles('TruthParticles')"
+                ".Count() > 0)")
+        .Select("lambda e4: e4.Select(lambda e5: e5.pt())")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt

@@ -114,7 +114,7 @@ def test_base_iterator_List_to_List():
     s = statement_base_iterator(a, List[int], List[int],
                                 term_info('a', int), term_info('a+1', int), False)
     r = s._inner_lambda(term_info('b', int), 'Select')
-    assert r.term == 'b.Select(lambda e1: e1+1)'
+    assert r.term == 'b.Select(lambda e0001: e0001+1)'
     assert _is_of_type(r.type, List[int])
 
 
@@ -123,7 +123,7 @@ def test_base_iterator_List_to_2List():
     s = statement_base_iterator(a, List[List[int]], List[List[int]],
                                 term_info('a', int), term_info('a+1', int), False)
     r = s._inner_lambda(term_info('b', int), 'Select')
-    assert r.term == 'b.Select(lambda e1: e1.Select(lambda e2: e2+1))'
+    assert r.term == 'b.Select(lambda e0001: e0001.Select(lambda e0002: e0002+1))'
     assert _is_of_type(r.type, List[List[int]])
 
 
@@ -151,7 +151,7 @@ def test_base_iterator_Count_Inner_List():
     s = statement_base_iterator(a, List[List[object]], List[int],
                                 term_info('a', List[object]), term_info('a.Count()', int), False)
     r = s._inner_lambda(term_info('b', List[object]), 'Select')
-    assert r.term == 'b.Select(lambda e1: e1.Count())'
+    assert r.term == 'b.Select(lambda e0001: e0001.Count())'
     assert _is_of_type(r.type, List[int])
 
 
@@ -175,7 +175,7 @@ def test_select_obj_apply_func_txt_seq():
     w = statement_select(a, rep_type, List[float], eb, term_info('eb.pt()', float))
 
     r = w.apply_as_function(term_info('e5', List[object]))
-    assert r.term == 'e5.Select(lambda e1: e1.pt())'
+    assert r.term == 'e5.Select(lambda e0001: e0001.pt())'
     assert _is_of_type(r.type, List[float])
 
 
@@ -190,6 +190,44 @@ def test_select_obj_apply_func_unwrap():
     r = w.apply_as_function(term_info('e5', object))
     assert r.term == 'e5.pt()'
     assert _is_of_type(r.type, float)
+
+
+def test_select_apply_func_unwrap_monad_passthrough():
+    a = ast.Num(n=10)
+    rep_type = List[object]
+    eb = term_info('eb', object)
+
+    w = statement_select(a, rep_type, List[float], eb,
+                         term_info('eb.pt()+<monad-ref-1>[0]', float))
+    w.prev_statement_is_monad()
+    w.set_monad_ref('<monad-ref-1>')
+
+    unwrapped = w.unwrap()
+
+    r = unwrapped.apply_as_function(term_info('e5', object, ['<monad-ref-2>']))
+
+    assert len(r.monad_refs) == 2
+    assert '<monad-ref-1>' in r.monad_refs
+    assert '<monad-ref-2>' in r.monad_refs
+
+
+def test_select_apply_func_wrap_monad_passthrough():
+    a = ast.Num(n=10)
+    rep_type = object
+    eb = term_info('eb', object)
+
+    w = statement_select(a, rep_type, float, eb,
+                         term_info('eb.pt()+<monad-ref-1>[0]', float))
+    w.prev_statement_is_monad()
+    w.set_monad_ref('<monad-ref-1>')
+
+    unwrapped = w.wrap()
+
+    r = unwrapped.apply_as_function(term_info('e5', List[object], ['<monad-ref-2>']))
+
+    assert len(r.monad_refs) == 2
+    assert '<monad-ref-1>' in r.monad_refs
+    assert '<monad-ref-2>' in r.monad_refs
 
 
 def test_select_obj_apply_func_txt_notseq_prev_monad():
@@ -214,7 +252,7 @@ def test_select_obj_apply_func_txt_seq_prev_monad():
     w.prev_statement_is_monad()
 
     r = w.apply_as_function(term_info('e5', List[object]))
-    assert r.term == 'e5[0].Select(lambda e1: e1.pt())'
+    assert r.term == 'e5[0].Select(lambda e0001: e0001.pt())'
     assert _is_of_type(r.type, List[float])
 
 
@@ -240,7 +278,7 @@ def test_select_obj_apply_func_txt_monad_seq():
     w.add_monad('em', 'em.jets()')
 
     r = w.apply_as_function(term_info('e5', List[object]))
-    assert r.term == '(e5.Select(lambda e1: e1.pt()), e5.jets())'
+    assert r.term == '(e5.Select(lambda e0001: e0001.pt()), e5.jets())'
     assert _is_of_type(r.type, List[float])
 
 
@@ -255,7 +293,7 @@ def test_select_apply_func_monad_passed():
     w.set_monad_ref('<monad-ref>')
     r = w.apply_as_function(term_info('e5', List[object]))
 
-    assert r.term == 'e5[0].Select(lambda e1: <monad-ref>[1].pt(e1.index))'
+    assert r.term == 'e5[0].Select(lambda e0001: <monad-ref>[1].pt(e0001.index))'
     assert _is_of_type(r.type, List[object])
     assert len(r.monad_refs) == 1
     assert r.monad_refs[0] == '<monad-ref>'
@@ -287,7 +325,7 @@ def test_select_apply_pass_monad_ref_through():
                          term_info('eb.pt()', float))
     r = w.apply_as_function(term_info('e5', List[object], ['<monad-ref>']))
 
-    assert r.term == 'e5.Select(lambda e1: e1.pt())'
+    assert r.term == 'e5.Select(lambda e0001: e0001.pt())'
     assert _is_of_type(r.type, List[float])
     assert len(r.monad_refs) == 1
     assert r.monad_refs[0] == '<monad-ref>'
@@ -304,7 +342,7 @@ def test_select_apply_gain_monad_ref_through():
     w.set_monad_ref('<monad-ref-1>')
     r = w.apply_as_function(term_info('e5', List[object], ['<monad-ref-2>']))
 
-    assert r.term == 'e5[0].Select(lambda e1: e1.pt())'
+    assert r.term == 'e5[0].Select(lambda e0001: e0001.pt())'
     assert _is_of_type(r.type, List[float])
     assert '<monad-ref-1>' in r.monad_refs
     assert '<monad-ref-2>' in r.monad_refs
@@ -330,7 +368,7 @@ def test_select_obj_apply_seq(object_stream):
     w = statement_select(a, rep_type, List[float], eb, term_info('eb.pt()', float))
 
     w.apply(object_stream)
-    object_stream.Select.assert_called_once_with('lambda eb: eb.Select(lambda e1: e1.pt())')
+    object_stream.Select.assert_called_once_with('lambda eb: eb.Select(lambda e0001: e0001.pt())')
 
 
 def test_select_obj_apply_notseq_prev_monad(object_stream):
@@ -354,7 +392,7 @@ def test_select_obj_apply_seq_prev_monad(object_stream):
     w.prev_statement_is_monad()
 
     w.apply(object_stream)
-    object_stream.Select.assert_called_once_with('lambda eb: eb[0].Select(lambda e1: e1.pt())')
+    object_stream.Select.assert_called_once_with('lambda eb: eb[0].Select(lambda e0001: e0001.pt())')
 
 
 def test_select_obj_apply_monad_notseq(object_stream):
@@ -379,7 +417,7 @@ def test_select_obj_apply_monad_seq(object_stream):
 
     w.apply(object_stream)
     object_stream.Select.assert_called_once_with(
-        'lambda eb: (eb.Select(lambda e1: e1.pt()), eb.jets())')
+        'lambda eb: (eb.Select(lambda e0001: e0001.pt()), eb.jets())')
 
 
 # def test_where_apply_func_term_one_level_up():
@@ -403,7 +441,7 @@ def test_where_apply_func_seq():
     w = statement_where(a, rep_type, eb, term_info('eb > 10.0', bool))
 
     trm = w.apply_as_function(term_info('e10', List[object]))
-    assert trm.term == 'e10.Where(lambda e1: e1 > 10.0)'
+    assert trm.term == 'e10.Where(lambda e0001: e0001 > 10.0)'
     assert _is_of_type(trm.type, List[object])
 
 
@@ -428,7 +466,7 @@ def test_where_apply_func_seq_prev_monad():
     w.prev_statement_is_monad()
 
     trm = w.apply_as_function(term_info('e10', List[float]))
-    assert trm.term == 'e10[0].Where(lambda e1: e1 > 10.0)'
+    assert trm.term == 'e10[0].Where(lambda e0001: e0001 > 10.0)'
     assert _is_of_type(trm.type, List[float])
 
 
@@ -442,7 +480,7 @@ def test_where_func_add_monad_seq():
     assert index == 1
 
     trm = w.apply_as_function(term_info('e10', List[float]))
-    assert trm.term == '(e10.Where(lambda e1: e1 > 10.0), e10.jets())'
+    assert trm.term == '(e10.Where(lambda e0001: e0001 > 10.0), e10.jets())'
     assert _is_of_type(trm.type, List[float])
 
 
@@ -455,7 +493,7 @@ def test_where_pass_func_through_monad():
     w = statement_where(a, rep_type, eb, f)
 
     trm = w.apply_as_function(term_info('e10', List[int]))
-    assert trm.term == 'e10[0].Where(lambda e1: e1 > <monad-ref>[1])'
+    assert trm.term == 'e10[0].Where(lambda e0001: e0001 > <monad-ref>[1])'
     assert len(trm.monad_refs) == 1
 
 
@@ -478,7 +516,7 @@ def test_where_obj_apply_seq(object_stream):
                         term_info('eb > 10.0', bool))
 
     w.apply(object_stream)
-    object_stream.Select.assert_called_once_with('lambda eb: eb.Where(lambda e1: e1 > 10.0)')
+    object_stream.Select.assert_called_once_with('lambda eb: eb.Where(lambda e0001: e0001 > 10.0)')
 
 
 def test_where_obj_apply_notseq_prev_monad(object_stream):
@@ -502,7 +540,7 @@ def test_where_obj_apply_seq_prev_monad(object_stream):
     w.prev_statement_is_monad()
 
     w.apply(object_stream)
-    object_stream.Select.assert_called_once_with('lambda eb: eb[0].Where(lambda e1: e1 > 10.0)')
+    object_stream.Select.assert_called_once_with('lambda eb: eb[0].Where(lambda e0001: e0001 > 10.0)')
 
 
 def test_where_obj_add_monad_noseq(object_stream):
@@ -529,7 +567,7 @@ def test_where_obj_add_monad_seq(object_stream):
 
     w.apply(object_stream)
     object_stream.Select.assert_called_once_with(
-        'lambda eb: (eb.Where(lambda e1: e1 > 10.0), eb.jets())')
+        'lambda eb: (eb.Where(lambda e0001: e0001 > 10.0), eb.jets())')
 
 
 def test_where_pass_through_monad(object_stream):
@@ -542,7 +580,7 @@ def test_where_pass_through_monad(object_stream):
 
     w.apply(object_stream)
     object_stream.Select.assert_called_once_with(
-        'lambda eb: eb[0].Where(lambda e1: e1 > eb[1])')
+        'lambda eb: eb[0].Where(lambda e0001: e0001 > eb[1])')
 
 
 def test_monad_ref_generator():

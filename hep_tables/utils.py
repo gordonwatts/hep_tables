@@ -35,7 +35,8 @@ def new_var_name():
     Returns the string for a new variable name. Each one is unique.
     '''
     global _var_name_counter
-    v = f'e{_var_name_counter}'
+    assert _var_name_counter < 10000
+    v = f'e{_var_name_counter:04}'
     _var_name_counter = _var_name_counter + 1
     return v
 

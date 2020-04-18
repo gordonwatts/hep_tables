@@ -10,12 +10,6 @@ from hep_tables.utils import _index_text_tuple, new_var_name, _unwrap_list, \
     _type_replace, new_term, _is_of_type, _is_list
 
 
-# # TODO: Can we delete this at some point?
-# def _unwrap_list_df(s: statement_base) -> Type:
-#     if isinstance(s, statement_df):
-#         return object
-#     return _unwrap_list(s.rep_type)
-
 class _monad_manager:
     '''
     A mixin to help track monads as they are needed by statements that support them.
@@ -37,6 +31,14 @@ class _monad_manager:
         self._monads: List[Tuple[str, str]] = []
         self._previous_statement_monad = False
         self._monad_ref: List[str] = []
+        # TERMS already hold monads, should statements as well???
+
+    def copy_monad_info(self, source: _monad_manager):
+        'Copy over monad info from one to the other, will erase our initial info'
+        self._monads = source._monads
+        self._previous_statement_monad = source._previous_statement_monad
+        self._monad_ref = source._monad_ref
+        return self
 
     def add_monad(self, var_name: str, monad: str) -> int:
         '''
@@ -130,6 +132,12 @@ class term_info:
         self.type = t
         self.monad_refs = monad_refs
 
+    def __str__(self):
+        return f'{self.term}: {self.type}'.replace("typing.", "")
+
+    def __repr__(self):
+        return f'{self.term}: {self.type}'.replace("typing.", "")
+
 
 class statement_base:
     '''
@@ -169,6 +177,20 @@ class statement_base:
         object, then return the same statement but that works object -> bool.
         '''
         assert False, 'This should be overriden'
+
+    def wrap(self) -> statement_base:
+        '''
+        If we operate on a list, then produce a statement that operates on whatever
+        is inside that list. If we were object -> bool, and our iterator was
+        object, then return the same statement but that works List[object] -> List[bool].
+        '''
+        assert False, 'This should be overriden'
+
+    def unwrap_if_possible(self) -> statement_base:
+        r_type = _unwrap_list(self._result_sequence_type) if _is_list(self._result_sequence_type) \
+            else self._result_sequence_type
+
+        return statement_base(self._ast, self._input_sequence_type, r_type)
 
 
 class statement_df(statement_base):
@@ -224,7 +246,7 @@ class statement_base_iterator(_monad_manager, statement_base):
                                    function.type)
         assert final_type is not None, \
             f'Internal error - cannot find iterator type {iterator.type} ' \
-            'in sequence type {rep_type}'
+            f'in sequence type {str(input_sequence_type)}'
 
         assert pass_through or _is_of_type(final_type, result_sequence_type), \
             'Internal error: types not consistent in iterator statement: ' \
@@ -279,15 +301,21 @@ class statement_base_iterator(_monad_manager, statement_base):
         assert False, 'This needs to be overridden'
 
     def unwrap(self) -> statement_base:
-        assert _is_list(self._input_sequence_type), \
-            f'Cannot unwrap list of type {self._input_sequence_type}'
         assert _is_list(self._result_sequence_type), \
             f'Cannot unwrap list of type {self._input_sequence_type}'
 
         new_input_type = _unwrap_list(self._input_sequence_type)
         new_result_type = _unwrap_list(self._result_sequence_type)
 
-        return self.clone_with_types(new_input_type, new_result_type)
+        return self.clone_with_types(new_input_type, new_result_type) \
+            .copy_monad_info(self)
+
+    def wrap(self) -> statement_base:
+        new_input_type = List[self._input_sequence_type]
+        new_result_type = List[self._result_sequence_type]
+
+        return self.clone_with_types(new_input_type, new_result_type) \
+            .copy_monad_info(self)
 
 
 class statement_select(statement_base_iterator):
@@ -320,7 +348,10 @@ class statement_select(statement_base_iterator):
         return seq.Select(f'lambda {self._iterator.term}: {inner_lambda.term}')
 
     def __str__(self):
-        return f'  .Select({self._inner_lambda(self._iterator, "Select").term})'
+        inner_lambda = self._render_as_function(term_info(self._iterator.term,
+                                                          self._input_sequence_type),
+                                                'Select', True)
+        return f'  .Select(lambda {self._iterator.term}: {inner_lambda.term})'
 
     def apply_as_function(self, sequence: term_info) -> term_info:
         return self._render_as_function(sequence, 'Select')
@@ -370,7 +401,13 @@ class statement_where(statement_base_iterator):
         return self._render_as_function(var_name, 'Where')
 
     def __str__(self):
-        return f'  .Select({self._inner_lambda(self._iterator, "Where").term})'
+        inner_lambda = self._render_as_function(term_info(self._iterator.term,
+                                                          self._input_sequence_type),
+                                                'Where', True)
+        if 'Where' in inner_lambda.term:
+            return f'  .Select(lambda {self._iterator.term}: {inner_lambda.term})'
+        else:
+            return f'  .Where(lambda {self._iterator.term}: {inner_lambda.term})'
 
 
 class statement_constant(statement_base):

@@ -1,7 +1,6 @@
 from __future__ import annotations
 import ast
 import inspect
-from logging import currentframe
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from dataframe_expressions import (
@@ -14,7 +13,7 @@ from .statements import (
     statement_select, statement_where, term_info)
 from .utils import (
     _find_root_expr, _is_list, _type_replace, _unwrap_list,
-    new_var_name, new_term, to_args_from_keywords, _count_list, _is_of_type)
+    new_var_name, new_term, to_args_from_keywords, _count_list)
 
 
 class RenderException(Exception):
@@ -100,9 +99,9 @@ def _render_expresion_as_transform(tracker: _statement_tracker, context: render_
     else:
         assert len(statements) == 0, \
             f'Internal programming error - cannot deal with statements and term {term.term}'
-        vn = new_term(term.type)
+        vn = new_term(_unwrap_list(tracker.sequence.result_type) if _is_list(tracker.sequence.result_type) else tracker.sequence.result_type)
         in_type = tracker.sequence.result_type
-        out_type = in_type
+        out_type = _type_replace(in_type, vn.type, term.type)
         st_select = statement_select(a, in_type, out_type, vn, term)
         tracker.statements.append(st_select)
         tracker.sequence = st_select
@@ -119,24 +118,21 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
     root_expr = _find_root_expr(expr, tracker.sequence._ast)
     if root_expr is tracker.sequence._ast:
         # Just continuing on with the sequence already in place.
-        assert _is_list(tracker.sequence.result_type) \
-            or isinstance(tracker.sequence, statement_unwrap_list)
-        if _is_list(tracker.sequence.result_type):
-            s, t = _render_expression(
-                statement_unwrap_list(tracker.sequence._ast, tracker.sequence.result_type),
-                expr, new_context, tracker)
-        else:
-            s, t = _render_expression(tracker.sequence, expr, new_context, tracker)
+        assert _is_list(tracker.sequence.result_type)
+        # or isinstance(tracker.sequence, statement_unwrap_list)
+        # if _is_list(tracker.sequence.result_type):
+        #     s, t = _render_expression(
+        #         statement_unwrap_list(tracker.sequence._ast, tracker.sequence.result_type),
+        #         expr, new_context, tracker)
+        # else:
+        #     s, t = _render_expression(tracker.sequence, expr, new_context, tracker)
+        seq = tracker.sequence.unwrap_if_possible()
+        s, t = _render_expression(seq, expr, new_context, tracker)
         assert t.term == 'main_sequence'
+        if _is_list(tracker.sequence.result_type):
+            s = [smt.wrap() for smt in s]
         if len(s) > 0:
             tracker.statements += s
-            assert False
-            # if _is_list(tracker.sequence.result_type):
-            # TODO: Clearly a KLUDGE KLUDGE
-            # assert isinstance(s[-1], statement_select) \
-            #     or isinstance(s[-1], statement_where)
-            # s[-1]._act_on_sequence = True
-            # s[-1].result_type = List[tracker.sequence.result_type]
             tracker.sequence = s[-1]
         return t
 
@@ -149,19 +145,19 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
                 root_expr, _ast_VarRef(term_info(f'{monad_ref}[{monad_index}]', object))):
 
             # The var we are going to loop over is a pointer to the sequence.
-            seq_as_object = tracker.sequence if not _is_list(tracker.sequence.result_type) \
-                else statement_unwrap_list(tracker.sequence._ast, tracker.sequence.result_type)
+            seq_as_object = tracker.sequence.unwrap_if_possible()
             select_var = new_term(seq_as_object.result_type)
             select_var_rep_ast = _ast_VarRef(select_var)
 
             with tracker.substitute_ast(tracker.sequence._ast, select_var_rep_ast):
                 trm = _resolve_expr_inline(seq_as_object, expr, new_context, tracker)
 
-        st = statement_select(a, List[trm.type],
-                              select_var, trm,
-                              _is_list(tracker.sequence.result_type))
+        result_type = _type_replace(tracker.sequence.result_type, select_var.type, trm.type)
+        st = statement_select(a, tracker.sequence.result_type, result_type,
+                              select_var, trm)
         st.prev_statement_is_monad()
         st.set_monad_ref(monad_ref)
+
         tracker.statements.append(st)
         tracker.sequence = st
         return term_info('main_sequence', st.result_type)
@@ -361,7 +357,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             else:
                 _render_expresion_as_transform(self, self.context, a.func.value)
 
-                resolved_args = [_resolve_expr_inline(self.sequence, arg, self.context, self)
+                resolved_args = [_resolve_expr_inline(self.sequence.unwrap_if_possible(),
+                                                      arg, self.context, self)
                                  for arg in a.args]
                 name = a.func.attr
                 self.append_call(a, name, [r.term for r in resolved_args])
@@ -389,9 +386,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                     f'Functions with array arguments are not supported ({name}) [{t.term}]'
             args = ', '.join(t.term for t in resolved_args)
 
-            st = statement_select(a, return_type, var_name,
-                                  term_info(f'{name}({args})', return_type),
-                                  _is_list(self.sequence.result_type))
+            st = statement_select(a, var_name.type, return_type, var_name,
+                                  term_info(f'{name}({args})', return_type))
             self.statements.append(st)
             self.sequence = st
         else:
@@ -415,14 +411,15 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             raise RenderException(f'The method "{name_of_method}" requires as input '
                                   f'{str(f_input_type)} but is given {self.sequence.result_type}')
 
-        working_on_sequence = _is_list(result_type) and _is_list(self.sequence.result_type) \
-            and _count_list(result_type) == _count_list(self.sequence.result_type)
+        # working_on_sequence = _is_list(result_type) and _is_list(self.sequence.result_type) \
+        #     and _count_list(result_type) == _count_list(self.sequence.result_type)
 
         # Build the function call
         arg_text = "" if args is None else ", ".join([str(ag) for ag in args])
         function_call = f'{name_of_method}({arg_text})'
-        iterator_name = new_term(_unwrap_list(self.sequence.result_type)) if working_on_sequence \
-            else new_term(self.sequence.result_type)
+        # iterator_name = new_term(_unwrap_list(self.sequence.result_type)) if working_on_sequence \
+        #     else new_term(self.sequence.result_type)
+        iterator_name = new_term(f_input_type)
         expr = f'{iterator_name.term}.{function_call}'
 
         # Finally, build the call statement as a select, and then update the current sequence.
@@ -510,10 +507,14 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 in_type = self.sequence.result_type
                 out_type = _type_replace(in_type, l_l.type, op_type)
                 out_type = op_type if out_type is None else out_type
+                monads = l_l.monad_refs + l_r.monad_refs
                 self.statements.append(statement_select(a, in_type, out_type,
                                                         l_l_iter,
                                                         term_info(expr, op_type)))
                 self.sequence = self.statements[-1]
+                for m in monads:
+                    self.sequence.set_monad_ref(m)
+                    self.sequence.prev_statement_is_monad()
                 self.term_stack.append(term_info('main_sequence', out_type))
 
         def visit_Compare(self, a: ast.Compare):
@@ -554,7 +555,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
 
         def visit_Num(self, a: ast.Num):
             'A number term should be pushed into the stack'
-            self.term_stack.append(term_info(str(a.n), 'float'))
+            self.term_stack.append(term_info(str(a.n), float))
 
         def visit_Str(self, a: ast.Str):
             'A string should be pushed onto the stack'
@@ -618,7 +619,8 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                             statement_select(a, self.sequence.result_type,
                                              self.sequence.result_type,
                                              var_name, term_info(expr, float)))
-                        self.term_stack.append(term_info('main_sequence', self.sequence.result_type))
+                        self.term_stack.append(term_info('main_sequence',
+                                                         self.sequence.result_type))
             elif isinstance(a.func, ast_Callable):
                 assert len(a.args) == 1, "internal error - expect one arg for top level labmda"
 
@@ -699,7 +701,9 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
         a_resolved = p_tracker.lookup_ast(curret_sequence._ast)
         assert (a_resolved is not None) \
             or (filter_sequence[0]
-                .apply_as_function(term_info('bogus', object)).term.find('bogus') < 0)
+                .apply_as_function(term_info('bogus', 
+                                   filter_sequence[0]._input_sequence_type))
+                .term.find('bogus') < 0)
         assert a_resolved is None or isinstance(a_resolved, _ast_VarRef)
 
         base_type = a_resolved.term.type if a_resolved is not None else object
