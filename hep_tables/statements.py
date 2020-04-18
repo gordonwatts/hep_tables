@@ -302,7 +302,7 @@ class statement_base_iterator(_monad_manager, statement_base):
 
     def unwrap(self) -> statement_base:
         assert _is_list(self._result_sequence_type), \
-            f'Cannot unwrap list of type {self._input_sequence_type}'
+            f'Cannot unwrap list of type {self._result_sequence_type}'
 
         new_input_type = _unwrap_list(self._input_sequence_type)
         new_result_type = _unwrap_list(self._result_sequence_type)
