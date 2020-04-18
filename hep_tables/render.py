@@ -709,8 +709,10 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
         base_type = a_resolved.term.type if a_resolved is not None else object
         base_name = a_resolved.term.term if a_resolved is not None else 'bogus'
         stem = term_info(base_name, base_type)
-        prep_statement = [sw.unwrap() for sw in filter_sequence] \
-            if _is_list(curret_sequence.result_type) else filter_sequence
+        if _is_list(curret_sequence.result_type) and all(_is_list(s.result_type) for s in filter_sequence):
+            prep_statement = [sw.unwrap_if_possible() for sw in filter_sequence]
+        else:
+            prep_statement = filter_sequence
         for s in prep_statement:
             stem = s.apply_as_function(stem)
         return stem

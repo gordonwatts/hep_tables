@@ -187,6 +187,12 @@ class statement_base:
         assert False, 'This should be overriden'
 
     def unwrap_if_possible(self) -> statement_base:
+        if _is_list(self._result_sequence_type) and _is_list(self._input_sequence_type):
+            return self.unwrap()
+
+        if (not _is_list(self._result_sequence_type)) and (not _is_list(self._input_sequence_type)):
+            return self
+
         r_type = _unwrap_list(self._result_sequence_type) if _is_list(self._result_sequence_type) \
             else self._result_sequence_type
 
