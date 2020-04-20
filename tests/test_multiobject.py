@@ -423,7 +423,7 @@ def test_count_of_sequence_inside_filter_2maps(good_transform_request, reduce_wa
     assert clean_linq(json['selection']) == txt
 
 
-def test_something_wrong(good_transform_request, reduce_wait_time, files_back_1):
+def test_function_return_type_with_maps(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
 
     mc_part = df.TruthParticles('TruthParticles')
@@ -452,5 +452,39 @@ def test_something_wrong(good_transform_request, reduce_wait_time, files_back_1)
                 ".TruthParticles('TruthParticles')"
                 ".Where(lambda e6: DeltaR(e3.eta()) < 0.5))")
         .Select("lambda e4: e4.Select(lambda e5: e5.Count())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_multi_object_monads(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+
+    mc_part = df.TruthParticles('TruthParticles')
+    eles = df.Electrons('Electrons')
+
+    from dataframe_expressions import user_func
+    @user_func
+    def DeltaR(p1_eta: float) -> float:
+        assert False
+
+    def near(mcs, e):
+        'Return all particles in mcs that are DR less than 0.5'
+        return mcs[lambda m: DeltaR(e.eta()) < 0.5]
+
+    # This gives us a list of events, and in each event, good electrons, and then for each good electron, all good MC electrons that are near by
+    eles['near_mcs'] = lambda reco_e: near(mc_part, reco_e)
+    eles['hasMC'] = lambda e: e.near_mcs.Count() > 0
+
+    make_local(eles[eles.hasMC].pt)
+
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.Electrons('Electrons'), e1)")
+        .Select("lambda e2: e2[0].Where(lambda e3: "
+                "e2[1]"
+                ".TruthParticles('TruthParticles')"
+                ".Where(lambda e6: DeltaR(e3.eta()) < 0.5).Count() > 0)")
+        .Select("lambda e4: e4.Select(lambda e5: e5.pt())")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt

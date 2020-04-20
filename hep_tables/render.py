@@ -142,7 +142,8 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
 
         # Create a pointer to the base monad - which is an object
         with tracker.substitute_ast(
-                root_expr, _ast_VarRef(term_info(f'{monad_ref}[{monad_index}]', object))):
+                root_expr, _ast_VarRef(term_info(f'{monad_ref}[{monad_index}]', object,
+                                       [monad_ref]))):
 
             # The var we are going to loop over is a pointer to the sequence.
             seq_as_object = tracker.sequence.unwrap_if_possible()
@@ -155,8 +156,9 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
         result_type = _type_replace(tracker.sequence.result_type, select_var.type, trm.type)
         st = statement_select(a, tracker.sequence.result_type, result_type,
                               select_var, trm)
-        st.prev_statement_is_monad()
-        st.set_monad_ref(monad_ref)
+        if trm.has_monads():
+            st.prev_statement_is_monad()
+            st.set_monad_ref(monad_ref)
 
         tracker.statements.append(st)
         tracker.sequence = st
@@ -236,7 +238,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         Create a mapper
 
         Arguments:
-            base_sequence           This is the sequence infomration that we start wit.
+            base_sequence           This is the sequence information that we start wit.
         '''
         ast.NodeVisitor.__init__(self)
         _statement_tracker.__init__(self, base_sequence, p_tracker)
@@ -275,7 +277,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             # we will be dealing with an unwrapped sequence.
             term = _resolve_expr_inline(self.sequence, a.filter, self.context, self)
             st = statement_where(a, self.sequence.result_type, var_name, term)
-            # This is a bit of a kudge
+            # This is a bit of a kludge
             if len(self.statements) > 0:
                 if self.statements[-1].has_monads():
                     st.prev_statement_is_monad()
@@ -283,7 +285,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             self.sequence = st
 
     def visit_Attribute(self, a: ast.Attribute):
-        # Get the stream up to the base expressoin.
+        # Get the stream up to the base expression.
         # if a.value is not self.sequence._ast:
         _render_expresion_as_transform(self, self.context, a.value)
 
@@ -387,9 +389,10 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 assert not _is_list(t.type), \
                     f'Functions with array arguments are not supported ({name}) [{t.term}]'
             args = ', '.join(t.term for t in resolved_args)
+            monad_refs = set([item for sublist in resolved_args for item in sublist.monad_refs])
 
             st = statement_select(a, self.sequence.result_type, return_type, var_name,
-                                  term_info(f'{name}({args})', func_return_type))
+                                  term_info(f'{name}({args})', func_return_type, list(monad_refs)))
             self.statements.append(st)
             self.sequence = st
         else:
@@ -512,7 +515,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 monads = l_l.monad_refs + l_r.monad_refs
                 self.statements.append(statement_select(a, in_type, out_type,
                                                         l_l_iter,
-                                                        term_info(expr, op_type)))
+                                                        term_info(expr, op_type, list(monads))))
                 self.sequence = self.statements[-1]
                 for m in monads:
                     self.sequence.set_monad_ref(m)
@@ -547,10 +550,11 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
 
             op, op_type = _known_operators[type(a.op)]
             expr = f'({left.term}) {op} ({right.term})'
+            monads = list(set(left.monad_refs + right.monad_refs))
             in_type = self.sequence.result_type
             out_type = _type_replace(in_type, _unwrap_list(in_type), bool)
             itr_unwrapped = term_info(var_name.term, _unwrap_list(in_type))
-            st = statement_select(a, in_type, out_type, itr_unwrapped, term_info(expr, bool))
+            st = statement_select(a, in_type, out_type, itr_unwrapped, term_info(expr, bool, monads))
             self.statements.append(st)
             self.sequence = st
             self.term_stack.append(term_info('main_sequence', List[bool]))
@@ -612,7 +616,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                     if v.term != 'main_sequence':
                         self.term_stack.append(
                             term_info(f'{_known_simple_math_functions[a.func.attr]}({v.term})',
-                                      v.type))
+                                      v.type, v.monad_refs))
                     else:
                         var_name = new_term(float)
                         expr = f'({_known_simple_math_functions[a.func.attr]}({var_name.term}))'
@@ -710,12 +714,17 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
 
         base_type = a_resolved.term.type if a_resolved is not None else object
         base_name = a_resolved.term.term if a_resolved is not None else 'bogus'
-        stem = term_info(base_name, base_type)
-        if _is_list(curret_sequence.result_type) and all(_is_list(s.result_type) for s in filter_sequence):
+        monads = a_resolved.term.monad_refs if a_resolved is not None else []
+        stem = term_info(base_name, base_type, monads)
+        if _is_list(curret_sequence.result_type) \
+                and all(_is_list(s.result_type) for s in filter_sequence):
             prep_statement = [sw.unwrap_if_possible() for sw in filter_sequence]
         else:
             prep_statement = filter_sequence
         for s in prep_statement:
+            # TODO: KLUDGE!!!!
+            s._previous_statement_monad = False
+            s._monads = []
             stem = s.apply_as_function(stem)
         return stem
     else:

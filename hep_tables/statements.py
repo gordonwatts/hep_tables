@@ -114,13 +114,17 @@ class _monad_manager:
         '''
         The statements may contain monads - substitute their references
         '''
-        self._monad_ref.append(monad_subst_string)
+        if monad_subst_string not in self._monad_ref:
+            self._monad_ref.append(monad_subst_string)
 
     def has_monads(self) -> bool:
         '''
-        Return ture if there is a monad being carried along.
+        Return true if there is a monad being carried along.
         '''
         return len(self._monads) > 0
+
+    def has_monad_refs(self) -> bool:
+        return len(self._monad_ref) > 0
 
 
 class term_info:
@@ -137,6 +141,9 @@ class term_info:
 
     def __repr__(self):
         return f'{self.term}: {self.type}'.replace("typing.", "")
+
+    def has_monads(self) -> bool:
+        return len(self.monad_refs) > 0
 
 
 class statement_base:
@@ -244,6 +251,8 @@ class statement_base_iterator(_monad_manager, statement_base):
         _monad_manager.__init__(self)
         self._iterator = iterator
         self._func = function
+        for m in function.monad_refs:
+            self.set_monad_ref(m)
 
         # Check that the types make sense. The earlier we catch this
         # the easier it is to debug.

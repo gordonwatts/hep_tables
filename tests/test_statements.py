@@ -167,6 +167,15 @@ def test_select_obj_apply_func_txt_notseq():
     assert _is_of_type(r.type, float)
 
 
+def test_select_copies_monads():
+    a = ast.Num(n=10)
+    rep_type = object
+    eb = term_info('eb', object)
+
+    w = statement_select(a, rep_type, float, eb, term_info('eb.pt()', float, ['dude']))
+    assert w.has_monad_refs()
+
+
 def test_select_obj_apply_func_txt_seq():
     a = ast.Num(n=10)
     rep_type = List[object]
@@ -443,6 +452,15 @@ def test_where_apply_func_seq():
     trm = w.apply_as_function(term_info('e10', List[object]))
     assert trm.term == 'e10.Where(lambda e0001: e0001 > 10.0)'
     assert _is_of_type(trm.type, List[object])
+
+
+def test_where_copy_monad_through():
+    a = ast.Num(n=10)
+    rep_type = List[object]
+    eb = term_info('eb', object)
+
+    w = statement_where(a, rep_type, eb, term_info('eb > 10.0', bool, 'dude'))
+    assert w.has_monad_refs()
 
 
 # def test_where_apply_func_noseq():
