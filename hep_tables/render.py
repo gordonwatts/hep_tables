@@ -559,6 +559,25 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             self.sequence = st
             self.term_stack.append(term_info('main_sequence', List[bool]))
 
+        def visit_UnaryOp(self, a: ast.UnaryOp):
+            'invert'
+            assert type(a.op) is ast.Invert, f'Unary operator {a.op} is not supported'
+
+            var_name = new_term(self.sequence.result_type)
+            with self.substitute_ast(self.sequence._ast,
+                                     _ast_VarRef(var_name)):
+                operand = _resolve_expr_inline(self.sequence, a.operand, self.context, self)
+
+            expr = f'not ({operand.term})'
+            in_type = self.sequence.result_type
+            out_type = _type_replace(in_type, _unwrap_list(in_type), bool)
+            itr_unwrapped = term_info(var_name.term, _unwrap_list(in_type))
+            st = statement_select(a, in_type, out_type, itr_unwrapped, term_info(expr, bool,
+                                  operand.monad_refs))
+            self.statements.append(st)
+            self.sequence = st
+            self.term_stack.append(term_info('main_sequence', List[bool]))
+
         def visit_Num(self, a: ast.Num):
             'A number term should be pushed into the stack'
             self.term_stack.append(term_info(str(a.n), float))
