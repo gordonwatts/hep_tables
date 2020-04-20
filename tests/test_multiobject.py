@@ -442,16 +442,15 @@ def test_something_wrong(good_transform_request, reduce_wait_time, files_back_1)
     # This gives us a list of events, and in each event, good electrons, and then for each good electron, all good MC electrons that are near by
     ele_mcs = eles.map(near(mc_part))
     make_local(ele_mcs.map(lambda e: e.Count()))
-    assert False
 
     json = good_transform_request
     txt = translate_linq(
         f
         .Select("lambda e1: (e1.Electrons('Electrons'), e1)")
-        .Select("lambda e2: e2[0].Where(lambda e3: "
+        .Select("lambda e2: e2[0].Select(lambda e3: "
                 "e2[1]"
                 ".TruthParticles('TruthParticles')"
-                ".Count() > 0)")
-        .Select("lambda e4: e4.Select(lambda e5: e5.pt())")
+                ".Where(lambda e6: DeltaR(e3.eta()) < 0.5))")
+        .Select("lambda e4: e4.Select(lambda e5: e5.Count())")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt

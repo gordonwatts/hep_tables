@@ -12,7 +12,7 @@ from .statements import (
     _monad_manager, statement_base, statement_constant, statement_df,
     statement_select, statement_where, term_info)
 from .utils import (
-    _find_root_expr, _is_list, _type_replace, _unwrap_list,
+    _find_root_expr, _is_list, _type_replace, _unwrap_list, _unwrap_if_possible,
     new_var_name, new_term, to_args_from_keywords, _count_list)
 
 
@@ -371,11 +371,13 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 return _resolve_expr_inline(self.sequence, arg, self.context, self)
 
             name = a.func.callable.__name__
-            return_type = inspect.signature(a.func.callable).return_annotation
-            if return_type is inspect.Signature.empty:
+            func_return_type = inspect.signature(a.func.callable).return_annotation
+            if func_return_type is inspect.Signature.empty:
                 raise Exception(f"User Error: Function {name} needs return type python hints.")
 
-            var_name = new_term(self.sequence.result_type)
+            var_name = new_term(_unwrap_if_possible(self.sequence.result_type))
+            return_type = _type_replace(self.sequence.result_type, var_name.type, func_return_type)
+
             with self.substitute_ast(self.sequence._ast,
                                      _ast_VarRef(var_name)):
                 resolved_args = [do_resolve(arg) for arg in a.args]
@@ -386,8 +388,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                     f'Functions with array arguments are not supported ({name}) [{t.term}]'
             args = ', '.join(t.term for t in resolved_args)
 
-            st = statement_select(a, var_name.type, return_type, var_name,
-                                  term_info(f'{name}({args})', return_type))
+            st = statement_select(a, self.sequence.result_type, return_type, var_name,
+                                  term_info(f'{name}({args})', func_return_type))
             self.statements.append(st)
             self.sequence = st
         else:

@@ -163,6 +163,12 @@ def _unwrap_list(t: Type) -> Type:
     return t.__args__[0]
 
 
+def _unwrap_if_possible(t: Type) -> Type:
+    if _is_list(t):
+        return _unwrap_list(t)
+    return t
+
+
 def _same_generic_type(t1: Type, t2: Type) -> bool:
     from typing import _GenericAlias
     if not isinstance(t1, _GenericAlias) or not isinstance(t2, _GenericAlias):
