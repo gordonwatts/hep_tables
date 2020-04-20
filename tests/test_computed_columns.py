@@ -47,7 +47,23 @@ def test_new_column_in_filter(good_transform_request, reduce_wait_time, files_ba
     json = good_transform_request
     txt = translate_linq(f
                          .Select("lambda e1: e1.jets()")
-                         .Select("lambda e4: e4.Where(lambda e2: e2.pt() > 50.0)")
+                         .Select("lambda e4: e4.Where(lambda e2: (e2.pt() > 50.0))")
+                         .Select("lambda e5: e5.Select(lambda e6: e6.pt())")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_new_column_in_filter_inverted(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    jets = df.jets
+    jets['ptgood'] = lambda j: j.pt > 50.0
+    seq = jets[~jets.ptgood].pt
+    make_local(seq)
+
+    json = good_transform_request
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e4: e4.Where(lambda e2: not (e2.pt() > 50.0))")
                          .Select("lambda e5: e5.Select(lambda e6: e6.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
