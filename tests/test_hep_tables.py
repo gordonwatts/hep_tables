@@ -2,7 +2,7 @@ import pytest
 
 from hep_tables import make_local, xaod_table
 
-from .utils_for_testing import ( # NOQA
+from .utils_for_testing import (  # NOQA
     clean_linq, delete_default_downloaded_files, f, files_back_1,
     good_transform_request, reduce_wait_time, reset_var_counter, translate_linq)
 

@@ -401,7 +401,8 @@ def test_select_obj_apply_seq_prev_monad(object_stream):
     w.prev_statement_is_monad()
 
     w.apply(object_stream)
-    object_stream.Select.assert_called_once_with('lambda eb: eb[0].Select(lambda e0001: e0001.pt())')
+    object_stream.Select.assert_called_once_with('lambda eb: eb[0]'
+                                                 '.Select(lambda e0001: e0001.pt())')
 
 
 def test_select_obj_apply_monad_notseq(object_stream):
@@ -459,20 +460,8 @@ def test_where_copy_monad_through():
     rep_type = List[object]
     eb = term_info('eb', object)
 
-    w = statement_where(a, rep_type, eb, term_info('eb > 10.0', bool, 'dude'))
+    w = statement_where(a, rep_type, eb, term_info('eb > 10.0', bool, ['dude']))
     assert w.has_monad_refs()
-
-
-# def test_where_apply_func_noseq():
-#     a = ast.Num(n=10)
-#     rep_type = float
-#     eb = term_info('eb', float)
-
-#     w = statement_where(a, rep_type, eb, term_info('eb > 10.0', bool))
-
-#     trm = w.apply_as_function(term_info('e10', int))
-#     assert trm.term == 'e10 > 10.0'
-#     assert _is_of_type(trm.type, bool)
 
 
 def test_where_apply_func_seq_prev_monad():
@@ -558,7 +547,8 @@ def test_where_obj_apply_seq_prev_monad(object_stream):
     w.prev_statement_is_monad()
 
     w.apply(object_stream)
-    object_stream.Select.assert_called_once_with('lambda eb: eb[0].Where(lambda e0001: e0001 > 10.0)')
+    object_stream.Select.assert_called_once_with('lambda eb: eb[0]'
+                                                 '.Where(lambda e0001: e0001 > 10.0)')
 
 
 def test_where_obj_add_monad_noseq(object_stream):

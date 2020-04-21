@@ -374,7 +374,7 @@ def test_map_in_repeat_root_filter(good_transform_request, reduce_wait_time, fil
     # but that is so far from per-event, which is basically what we want here. This shows
     # up clearly inside the code, unfortunately - as we have to have special workarounds
     # to deal with this.
-    # This this below should fail - becasue the "mc" is a single particle - so you can't
+    # This this below should fail - because the "mc" is a single particle - so you can't
     # do a count on it!
     seq = mcs[mcs.map(lambda mc: mcs.Count() == 2)].pt
     with pytest.raises(RenderException) as e:
@@ -439,7 +439,8 @@ def test_function_return_type_with_maps(good_transform_request, reduce_wait_time
         'Return all particles in mcs that are DR less than 0.5'
         return mcs[lambda m: DeltaR(e.eta()) < 0.5]
 
-    # This gives us a list of events, and in each event, good electrons, and then for each good electron, all good MC electrons that are near by
+    # This gives us a list of events, and in each event, good electrons,
+    # and then for each good electron, all good MC electrons that are near by
     ele_mcs = eles.map(near(mc_part))
     make_local(ele_mcs.map(lambda e: e.Count()))
 
@@ -471,7 +472,8 @@ def test_multi_object_monads(good_transform_request, reduce_wait_time, files_bac
         'Return all particles in mcs that are DR less than 0.5'
         return mcs[lambda m: DeltaR(e.eta()) < 0.5]
 
-    # This gives us a list of events, and in each event, good electrons, and then for each good electron, all good MC electrons that are near by
+    # This gives us a list of events, and in each event, good electrons,
+    # and then for each good electron, all good MC electrons that are near by
     eles['near_mcs'] = lambda reco_e: near(mc_part, reco_e)
     eles['hasMC'] = lambda e: e.near_mcs.Count() > 0
 
@@ -490,14 +492,16 @@ def test_multi_object_monads(good_transform_request, reduce_wait_time, files_bac
     assert clean_linq(json['selection']) == txt
 
 
-def test_multi_object_call_with_same_thing_twice(good_transform_request, reduce_wait_time, files_back_1):
+def test_multi_object_call_with_same_thing_twice(good_transform_request,
+                                                 reduce_wait_time, files_back_1):
     # df.Electrons appears inside a call that has unwrapped the sequence.
     df = xaod_table(f)
 
     mc_part = df.TruthParticles('TruthParticles')
     eles = df.Electrons('Electrons')
 
-    # This gives us a list of events, and in each event, good electrons, and then for each good electron, all good MC electrons that are near by
+    # This gives us a list of events, and in each event, good electrons, and then for each
+    # good electron, all good MC electrons that are near by
     eles['near_mcs'] = lambda reco_e: mc_part
     eles['hasMC'] = lambda e: e.near_mcs.Count() > 0
 

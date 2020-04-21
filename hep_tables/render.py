@@ -13,7 +13,7 @@ from .statements import (
     statement_select, statement_where, term_info)
 from .utils import (
     _find_root_expr, _is_list, _type_replace, _unwrap_list, _unwrap_if_possible,
-    new_var_name, new_term, to_args_from_keywords, _count_list)
+    new_var_name, new_term, to_args_from_keywords)
 
 
 class RenderException(Exception):
@@ -99,7 +99,9 @@ def _render_expresion_as_transform(tracker: _statement_tracker, context: render_
     else:
         assert len(statements) == 0, \
             f'Internal programming error - cannot deal with statements and term {term.term}'
-        vn = new_term(_unwrap_list(tracker.sequence.result_type) if _is_list(tracker.sequence.result_type) else tracker.sequence.result_type)
+        vn = new_term(_unwrap_list(tracker.sequence.result_type)
+                      if _is_list(tracker.sequence.result_type)
+                      else tracker.sequence.result_type)
         in_type = tracker.sequence.result_type
         out_type = _type_replace(in_type, vn.type, term.type)
         st_select = statement_select(a, in_type, out_type, vn, term)
@@ -172,7 +174,7 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
 
 class _statement_tracker:
     '''
-    Track statements in seperate stacks. We have a parent link so we can
+    Track statements in separate stacks. We have a parent link so we can
     look all the way back in the stack if need be when looking for a replacement.
     '''
     def __init__(self, start_sequence: statement_base, parent: Optional[_statement_tracker]):
@@ -402,28 +404,15 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         'Append a call onto the call chain that will look at this method'
         # Figure out the type information of this function call.
 
-        # The result type of the sequence after we are done. Will depend on what we are currently
-        # working on. To understand if we want to work on the top level or the sequence we have to
-        # look to see what has happened to the types:
-        #   int -> int - then we are doing whatever we were doing (object, or list)
-        #   List[int] -> int - then are going to not operate on a sequence any longer
-        #                      (the function will take care of mapping sequence ot value)
-        #   object -> List[int] - Then we are not going to operate on a sequence.
-
         f_input_type, f_result_type = _type_system(name_of_method)
         result_type = _type_replace(self.sequence.result_type, f_input_type, f_result_type)
         if result_type is None:
             raise RenderException(f'The method "{name_of_method}" requires as input '
                                   f'{str(f_input_type)} but is given {self.sequence.result_type}')
 
-        # working_on_sequence = _is_list(result_type) and _is_list(self.sequence.result_type) \
-        #     and _count_list(result_type) == _count_list(self.sequence.result_type)
-
         # Build the function call
         arg_text = "" if args is None else ", ".join([str(ag) for ag in args])
         function_call = f'{name_of_method}({arg_text})'
-        # iterator_name = new_term(_unwrap_list(self.sequence.result_type)) if working_on_sequence \
-        #     else new_term(self.sequence.result_type)
         iterator_name = new_term(f_input_type)
         expr = f'{iterator_name.term}.{function_call}'
 
@@ -525,9 +514,9 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
         def visit_Compare(self, a: ast.Compare):
             # Need better protection here - if visit doesn't render something
             # even if we are deep in an expression... This will catch internal errors
-            # in a production system when someone ueses a "new" feature of python we
+            # in a production system when someone uses a "new" feature of python we
             # don't have yet. As it stands, it will still cause an assertion failure, it will
-            # just potentially be far away from the place the problem actually occured.
+            # just potentially be far away from the place the problem actually occurred.
             assert len(a.comparators) == 1
             assert len(a.ops) == 1
             if type(a.ops[0]) not in _known_operators:
@@ -554,7 +543,8 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             in_type = self.sequence.result_type
             out_type = _type_replace(in_type, _unwrap_list(in_type), bool)
             itr_unwrapped = term_info(var_name.term, _unwrap_list(in_type))
-            st = statement_select(a, in_type, out_type, itr_unwrapped, term_info(expr, bool, monads))
+            st = statement_select(a, in_type, out_type, itr_unwrapped,
+                                  term_info(expr, bool, monads))
             self.statements.append(st)
             self.sequence = st
             self.term_stack.append(term_info('main_sequence', List[bool]))
@@ -647,7 +637,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                         self.term_stack.append(term_info('main_sequence',
                                                          self.sequence.result_type))
             elif isinstance(a.func, ast_Callable):
-                assert len(a.args) == 1, "internal error - expect one arg for top level labmda"
+                assert len(a.args) == 1, "internal error - expect one arg for top level lambda"
 
                 # Render the sequence that gets us to what we want to map over.
                 self.visit(a.args[0])
@@ -696,7 +686,7 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
                          p_tracker: _statement_tracker) \
         -> term_info:
     '''
-    Resovel an expression in-line.
+    Resolve an expression in-line.
 
     Arguments:
         current_sequence        The current sequence is what - we can grab this from outside
@@ -708,7 +698,7 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
     # 1. object (implied sequence, one item per event):
     #       d.Where(lambda e: e > 10)
     # 2. List[object] (explicit sequence, one list per event):
-    #       d.Select(lambda e: e.Where(labmda ep: ep > 10))
+    #       d.Select(lambda e: e.Where(lambda ep: ep > 10))
     # if _is_list(curret_sequence.result_type):
     #     # Since this guy is a sequence, we have to turn it into not-a sequence for processing.
     #     filter_sequence, trm = _render_expression(
@@ -726,7 +716,7 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
         a_resolved = p_tracker.lookup_ast(curret_sequence._ast)
         assert (a_resolved is not None) \
             or (filter_sequence[0]
-                .apply_as_function(term_info('bogus', 
+                .apply_as_function(term_info('bogus',
                                    filter_sequence[0]._input_sequence_type))
                 .term.find('bogus') < 0)
         assert a_resolved is None or isinstance(a_resolved, _ast_VarRef)

@@ -91,7 +91,7 @@ class _monad_manager:
         The previous statement is a tuple, containing a monad. We want to pass it down a statement.
 
         Arguments:
-            index           Index in the previous tuple that we want to foward
+            index           Index in the previous tuple that we want to forward
 
         Returns:
             index           Index in this statement where this monad can be found
@@ -164,7 +164,7 @@ class statement_base:
         assert False, 'This should be overridden'
 
     def apply_as_function(self, stem: term_info) -> term_info:
-        assert False, 'This should be overriden'
+        assert False, 'This should be overridden'
 
     def add_monad(self, var_name: str, monad: str) -> int:
         'Add a monad to be carried along'
@@ -183,7 +183,7 @@ class statement_base:
         is inside that list. If we were List[object] -> List[bool], and our iterator was
         object, then return the same statement but that works object -> bool.
         '''
-        assert False, 'This should be overriden'
+        assert False, 'This should be overridden'
 
     def wrap(self) -> statement_base:
         '''
@@ -191,13 +191,14 @@ class statement_base:
         is inside that list. If we were object -> bool, and our iterator was
         object, then return the same statement but that works List[object] -> List[bool].
         '''
-        assert False, 'This should be overriden'
+        assert False, 'This should be overridden'
 
     def unwrap_if_possible(self) -> statement_base:
         if _is_list(self._result_sequence_type) and _is_list(self._input_sequence_type):
             return self.unwrap()
 
-        if (not _is_list(self._result_sequence_type)) and (not _is_list(self._input_sequence_type)):
+        if (not _is_list(self._result_sequence_type)) \
+                and (not _is_list(self._input_sequence_type)):
             return self
 
         r_type = _unwrap_list(self._result_sequence_type) if _is_list(self._result_sequence_type) \
@@ -282,9 +283,10 @@ class statement_base_iterator(_monad_manager, statement_base):
         Helper function to render as a inline function ready to use in code.
         '''
         assert _is_of_type(self._input_sequence_type, sequence.type), \
-            'Internal Error: types incompatible'
+            f'Internal Error: sequence type {self._input_sequence_type} not compatible ' \
+            f'with iterator sequence type {sequence.type}.'
 
-        # Pass all monad referces forward, we do not resolve them.
+        # Pass all monad references forward, we do not resolve them.
         monad_refs = self._monad_ref
         if not render_monads:
             self._monad_ref = []
@@ -383,7 +385,7 @@ class statement_where(statement_base_iterator):
                  iterator: term_info,
                  function: term_info):
 
-        # Get some object invarients setup right
+        # Get some object invariants setup right
         assert function.type == bool, f'Where function must be type bool, not {function.type}'
 
         statement_base_iterator.__init__(self, ast_rep, input_sequence_type,
@@ -410,9 +412,6 @@ class statement_where(statement_base_iterator):
             return seq.Where(f'lambda {self._iterator.term}: {inner_lambda.term}')
 
     def apply_as_function(self, var_name: term_info) -> term_info:
-        assert not _is_of_type(self._input_sequence_type, self._iterator.type), \
-            'Where statement must be in a sequence, not at top level'
-
         return self._render_as_function(var_name, 'Where')
 
     def __str__(self):

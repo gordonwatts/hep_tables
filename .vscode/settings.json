@@ -1,3 +1,22 @@
 {
     "python.pythonPath": ".venv\\Scripts\\python.exe",
+    "cSpell.words": [
+        "NOQA",
+        "ROOTT",
+        "aspt",
+        "binop",
+        "eles",
+        "linq",
+        "mult",
+        "nargs",
+        "noseq",
+        "numpy",
+        "ptgev",
+        "ptgood",
+        "pytest",
+        "reco",
+        "servicex",
+        "treeme",
+        "xaod"
+    ],
 }
