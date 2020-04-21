@@ -2,6 +2,8 @@ from __future__ import annotations
 import ast
 import inspect
 from typing import Callable, Dict, List, Optional, Tuple, Type
+from contextlib import ExitStack
+
 
 from dataframe_expressions import (
     ast_Callable, ast_DataFrame, ast_Filter, ast_FunctionPlaceholder,
@@ -212,16 +214,25 @@ class _statement_tracker:
 
         return m_index
 
-    def substitute_ast(self, source_ast: ast.AST, replace_with: ast.AST) -> replace_an_ast:
+    def substitute_ast(self, source_ast: ast.AST, replace_with: ast.AST) -> ExitStack:
         '''
         Add to the replacement stack. And do it in order.
         '''
-        return replace_an_ast(self, source_ast, replace_with)
+        stack = ExitStack()
+        a = source_ast
+        while a is not None:
+            stack.enter_context(replace_an_ast(self, a, replace_with))
+            if isinstance(a, ast_Filter):
+                a = a.expr
+            else:
+                a = None
+        return stack
 
     def lookup_ast(self, a: ast.AST) -> Optional[ast.AST]:
         '''
         See if we can find an ast for replacement, return it or None
         '''
+
         for rp in reversed(self.ast_replacements):
             if rp[0] is a:
                 return rp[1]
@@ -380,7 +391,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 raise Exception(f"User Error: Function {name} needs return type python hints.")
 
             var_name = new_term(_unwrap_if_possible(self.sequence.result_type))
-            return_type = _type_replace(self.sequence.result_type, var_name.type, func_return_type)
+            return_seq_type = _type_replace(self.sequence.result_type, var_name.type, func_return_type)
 
             with self.substitute_ast(self.sequence._ast,
                                      _ast_VarRef(var_name)):
@@ -393,7 +404,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             args = ', '.join(t.term for t in resolved_args)
             monad_refs = set([item for sublist in resolved_args for item in sublist.monad_refs])
 
-            st = statement_select(a, self.sequence.result_type, return_type, var_name,
+            st = statement_select(a, self.sequence.result_type, return_seq_type, var_name,
                                   term_info(f'{name}({args})', func_return_type, list(monad_refs)))
             self.statements.append(st)
             self.sequence = st
@@ -712,7 +723,7 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
         or (trm.term == 'main_sequence' and len(filter_sequence) > 0)
 
     if len(filter_sequence) > 0:
-        # If we have to create a new variable here, then probably somethign has gone wrong.
+        # If we have to create a new variable here, then probably something has gone wrong.
         a_resolved = p_tracker.lookup_ast(curret_sequence._ast)
         assert (a_resolved is not None) \
             or (filter_sequence[0]
