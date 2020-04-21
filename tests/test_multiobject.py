@@ -488,3 +488,29 @@ def test_multi_object_monads(good_transform_request, reduce_wait_time, files_bac
         .Select("lambda e4: e4.Select(lambda e5: e5.pt())")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(json['selection']) == txt
+
+
+def test_multi_object_call_with_same_thing_twice(good_transform_request, reduce_wait_time, files_back_1):
+    # df.Electrons appears inside a call that has unwrapped the sequence.
+    df = xaod_table(f)
+
+    mc_part = df.TruthParticles('TruthParticles')
+    eles = df.Electrons('Electrons')
+
+    # This gives us a list of events, and in each event, good electrons, and then for each good electron, all good MC electrons that are near by
+    eles['near_mcs'] = lambda reco_e: mc_part
+    eles['hasMC'] = lambda e: e.near_mcs.Count() > 0
+
+    make_local(eles[~eles.hasMC].pt)
+
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: (e1.Electrons('Electrons'), e1)")
+        .Select("lambda e2: e2[0].Where(lambda e3: "
+                "not e2[1]"
+                ".TruthParticles('TruthParticles')"
+                ".Count() > 0)")
+        .Select("lambda e4: e4.Select(lambda e5: e5.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
