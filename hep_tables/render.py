@@ -1,7 +1,7 @@
 from __future__ import annotations
 import ast
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Type
+from typing import Callable, Dict, List, Optional, Tuple, Type, cast
 from contextlib import ExitStack
 
 
@@ -385,13 +385,15 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             def do_resolve(arg):
                 return _resolve_expr_inline(self.sequence, arg, self.context, self)
 
-            name = a.func.callable.__name__
-            func_return_type = inspect.signature(a.func.callable).return_annotation
+            func = cast(ast_FunctionPlaceholder, a.func)
+            name = func.callable.__name__
+            func_return_type = inspect.signature(func.callable).return_annotation
             if func_return_type is inspect.Signature.empty:
                 raise Exception(f"User Error: Function {name} needs return type python hints.")
 
             var_name = new_term(_unwrap_if_possible(self.sequence.result_type))
-            return_seq_type = _type_replace(self.sequence.result_type, var_name.type, func_return_type)
+            return_seq_type = _type_replace(self.sequence.result_type, var_name.type,
+                                            func_return_type)
 
             with self.substitute_ast(self.sequence._ast,
                                      _ast_VarRef(var_name)):
@@ -655,7 +657,8 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 self.term_stack.pop()
 
                 # And the thing we want to call we can now render.
-                t = _render_callable(a, a.func, self.context, self)
+                func = cast(ast_Callable, a.func)
+                t = _render_callable(a, func, self.context, self)
                 self.term_stack.append(t)
             else:
                 # We are going to need to grab each argument (and in some cases we will
@@ -743,8 +746,9 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
             prep_statement = filter_sequence
         for s in prep_statement:
             # TODO: KLUDGE!!!!
-            s._previous_statement_monad = False
-            s._monads = []
+            s1 = cast(_monad_manager, s)
+            s1._previous_statement_monad = False
+            s1._monads = []
             stem = s.apply_as_function(stem)
         return stem
     else:

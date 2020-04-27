@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 import re
-from typing import List, Tuple, Type
+from typing import List, Tuple, Type, cast
 
 from func_adl import ObjectStream
 
@@ -206,6 +206,12 @@ class statement_base:
 
         return statement_base(self._ast, self._input_sequence_type, r_type)
 
+    def set_monad_ref(self, monad_subst_string: str):
+        assert False, 'Must be overridden'
+
+    def prev_statement_is_monad(self):
+        assert False, 'Must be overridden'
+
 
 class statement_df(statement_base):
     '''
@@ -324,15 +330,15 @@ class statement_base_iterator(_monad_manager, statement_base):
         new_input_type = _unwrap_list(self._input_sequence_type)
         new_result_type = _unwrap_list(self._result_sequence_type)
 
-        return self.clone_with_types(new_input_type, new_result_type) \
-            .copy_monad_info(self)
+        return cast(statement_base, self.clone_with_types(new_input_type, new_result_type)
+                    .copy_monad_info(self))
 
     def wrap(self) -> statement_base:
         new_input_type = List[self._input_sequence_type]
         new_result_type = List[self._result_sequence_type]
 
-        return self.clone_with_types(new_input_type, new_result_type) \
-            .copy_monad_info(self)
+        return cast(statement_base, self.clone_with_types(new_input_type, new_result_type)
+                    .copy_monad_info(self))
 
 
 class statement_select(statement_base_iterator):
