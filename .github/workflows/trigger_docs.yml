@@ -15,4 +15,4 @@ jobs:
       with: 
         token: ${{ secrets.ALL_IN }}
         repository: gordonwatts/hep_tables_docs
-        event-type: my-event
+        event-type: pushed
