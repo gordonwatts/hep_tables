@@ -1,0 +1,18 @@
+name: Trigger Documentation Update
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Repo Dispatch
+      uses: peter-evans/repository-dispatch@v1
+      with: 
+        token: ${{ secrets.REPO_ACCESS_TOKEN }}
+        repository: gordonwatts/hep_tables_docs
+        event-type: pushed
