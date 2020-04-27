@@ -14,5 +14,4 @@ jobs:
       uses: peter-evans/repository-dispatch@v1.0.0
       with: 
         token: ${{ secrets.REPO_ACCESS_TOKEN }}
-        repository: gordonwatts/hep_tables_docs
         event-type: pushed
