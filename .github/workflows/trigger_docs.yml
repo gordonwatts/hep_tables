@@ -13,5 +13,5 @@ jobs:
     - name: Repo Dispatch
       uses: peter-evans/repository-dispatch@v1.0.0
       with: 
-        token: ${{ secrets.REPO_ACCESS_TOKEN }}
+        token: ${{ secrets.REPO_ACCESS_TOKENN }}
         event-type: pushed
