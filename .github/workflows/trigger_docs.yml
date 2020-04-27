@@ -10,16 +10,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # - name: Repo Dispatch
-      # uses: defold/repository-dispatch@1.1.4
-      # with:
-      #   token: ${{ secrets.ALL_IN }}
-      #   repo: 'gordonwatts/hep_tables_docs'
-      #   user: 'gwatts@uw.edu'
-      #   action: 'my-event'
-
     - name: Repo Dispatch
       uses: peter-evans/repository-dispatch@v1.0.0
       with: 
         token: ${{ secrets.ALL_IN }}
+        repository: gordonwatts/hep_tables_docs
         event-type: my-event
