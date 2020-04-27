@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Repo Dispatch
+    # - name: Repo Dispatch
       # uses: defold/repository-dispatch@1.1.4
       # with:
       #   token: ${{ secrets.ALL_IN }}
