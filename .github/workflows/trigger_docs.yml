@@ -13,7 +13,7 @@ jobs:
     - name: Repo Dispatch
       uses: defold/repository-dispatch@1.1.4
       with:
-        token: ${{ secrets.REPO_ACCESS_TOKEN }}
+        token: ${{ secrets.ALL_IN }}
         repo: 'gordonwatts/hep_tables'
         user: 'gwatts@uw.edu'
         action: 'my-event'
