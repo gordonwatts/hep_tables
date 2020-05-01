@@ -392,7 +392,7 @@ class statement_where(statement_base_iterator):
                  function: term_info):
 
         # Get some object invariants setup right
-        assert function.type == bool, f'Where function must be type bool, not {function.type}'
+        assert function.type == bool, f'Where function ({function.term}) must be type <bool>, not <{function.type.__name__}>'
 
         statement_base_iterator.__init__(self, ast_rep, input_sequence_type,
                                          input_sequence_type, iterator,

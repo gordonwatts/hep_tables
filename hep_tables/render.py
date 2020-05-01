@@ -764,6 +764,8 @@ _known_types = {
     'tracks': (object, List[object]),
     'jets': (object, List[object]),
     'mcs': (object, List[object]),
+    'hasProdVtx': (object, bool),
+    'hasDecayVtx': (object, bool),
 }
 
 

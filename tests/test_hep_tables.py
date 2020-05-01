@@ -366,6 +366,34 @@ def test_filter_jet_objects(good_transform_request, reduce_wait_time, files_back
     assert clean_linq(json['selection']) == txt
 
 
+def test_filter_jet_by_attribute(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets[df.jets.hasProdVtx].pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e7: e7.Where(lambda e2: e2.hasProdVtx())")
+        .Select("lambda e8: e8.Select(lambda e6: e6.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
+def test_filter_jet_by_attributes(good_transform_request, reduce_wait_time, files_back_1):
+    df = xaod_table(f)
+    seq = df.jets[df.jets.hasProdVtx & df.jets.hasDecayVtx].pt
+    make_local(seq)
+    json = good_transform_request
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e7: e7.Where(lambda e2: e2.hasProdVtx() and e2.hasDecayVtx())")
+        .Select("lambda e8: e8.Select(lambda e6: e6.pt())")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(json['selection']) == txt
+
+
 def test_filter_and(good_transform_request, reduce_wait_time, files_back_1):
     df = xaod_table(f)
     seq = df.jets[(df.jets.pt > 30.0) & (df.jets.pt > 40.0)].pt
