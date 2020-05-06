@@ -788,6 +788,7 @@ def _type_system(n: str) -> Tuple[Type, Type]:
 # List of math functions we translate into something similar in the LINQ code.
 _known_simple_math_functions = {
     'abs': 'abs',
+    'sqrt': 'sqrt',
     # numpy functions
     'absolute': 'abs',
 }
