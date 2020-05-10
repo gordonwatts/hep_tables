@@ -1,6 +1,7 @@
 import pytest
 
 from hep_tables import make_local, xaod_table
+from dataframe_expressions import DataFrame
 
 from .utils_for_testing import (  # NOQA
     clean_linq, delete_default_downloaded_files, f, files_back_1,
@@ -17,6 +18,22 @@ def reset_var_counter_alias():
 
 def test_create_base():
     _ = xaod_table(f)
+
+
+def test_copy_xaod_table_1():
+    x1 = xaod_table(f)
+    import copy
+    x2 = copy.deepcopy(x1)
+    assert x1 is not x2
+    assert isinstance(x1, xaod_table)
+
+
+def test_copy_xaod_table_2():
+    x1 = xaod_table(f).jets.pt
+    import copy
+    x2 = copy.deepcopy(x1)
+    assert x1 is not x2
+    assert isinstance(x1, DataFrame)
 
 
 def test_collect_pts(good_transform_request, reduce_wait_time, files_back_1):
