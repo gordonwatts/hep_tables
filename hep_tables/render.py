@@ -479,7 +479,9 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             s_right, right = _render_expression(self.sequence, a_right, self.context, self)
 
             assert (len(s_right) == 0 or not _is_list(s_right[-1].result_type)) \
-                or (len(s_left) == 0 or not _is_list(s_left[-1].result_type))
+                or (len(s_left) == 0 or not _is_list(s_left[-1].result_type)), \
+                f'double indexes: {ast.dump(a_left)} and {ast.dump(a_right)} ' \
+                f'for {ast.dump(operator)}.'
 
             def do_statements(s: List[statement_base], t: term_info) \
                     -> Tuple[term_info, term_info]:
