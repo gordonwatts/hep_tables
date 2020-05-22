@@ -2,7 +2,6 @@ import ast
 from json import dumps, loads
 import logging
 import os
-import re
 import shutil
 import tempfile
 from unittest import mock
@@ -14,6 +13,7 @@ import servicex.servicex as fe
 import hep_tables.local as hep_local
 from hep_tables.utils import reset_new_var_counter
 from dataframe_expressions.alias import _reset_alias_catalog
+from servicex import clean_linq
 
 
 # For use in testing - a mock.
@@ -133,32 +133,3 @@ def translate_linq(expr) -> str:
     # we don't have to keep re-writing when the algorithm changes.
 
     return clean_linq(linq)
-
-
-def clean_linq(linq: str) -> str:
-    '''
-    Noramlize the variables in a linq expression. Should make the
-    linq expression more easily comparable even if the algorithm that
-    generates the underlying variable numbers changes.
-    '''
-    all_uses = re.findall('e[0-9]+', linq)
-    index = 0
-    used = []
-    mapping = {}
-    for v in all_uses:
-        if v not in used:
-            used.append(v)
-            new_var = f'a{index}'
-            index += 1
-            mapping[v] = new_var
-
-    if len(mapping) == 0:
-        return linq
-
-    max_len = max([len(k) for k in mapping.keys()])
-    for l in range(max_len, 0, -1):
-        for k in mapping.keys():
-            if len(k) == l:
-                linq = linq.replace(k, mapping[k])
-
-    return linq
