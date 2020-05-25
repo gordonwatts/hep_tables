@@ -24,6 +24,7 @@
         "nargs",
         "noseq",
         "numpy",
+        "numpy's",
         "pnfs",
         "ptgev",
         "ptgood",

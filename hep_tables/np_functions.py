@@ -19,11 +19,11 @@ def histogram(df: DataFrame, bins: Union[int, List[float]] = 10,
         bins            The number of bins. Passed directly to `numpy.histogram`.
         range           Upper and lower limits on the histogram binning. Passed directly to
                         `numpy.histogram`.
-        desnity         Normalize by density or not? Passed directly to `numpy.histogram`.
+        density         Normalize by density or not? Passed directly to `numpy.histogram`.
 
     Returns:
         DataFrame       The `DataFrame` represents the histogram proxy. If made local, the
-                        return is the same as from numpy's hisogram function.
+                        return is the same as from numpy's histogram function.
     '''
     keywords = [
         ast.keyword(arg='bins', value=to_ast(bins)),
