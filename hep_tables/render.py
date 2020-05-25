@@ -51,10 +51,11 @@ def curry(f: Callable) -> Callable:
 
 class _ast_VarRef(ast.AST):
     'An internal AST when we want to replace an ast with a variable reference inline'
+    _fields = ('term',)
+
     def __init__(self, v: term_info):
         ast.AST.__init__(self)
         self.term = v
-        self._fields = ('term',)
 
     def __str__(self):
         return f'{self.term.term}: {self.term.type}'
