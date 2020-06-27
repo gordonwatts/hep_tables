@@ -7,7 +7,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 extras_require = {'test': ['pytest', 'pytest-asyncio', 'pytest-cov', 'pytest-mock', 'flake8',
-                           'coverage', 'twine', 'wheel', 'jupyter-book'],
+                           'coverage', 'twine', 'wheel', 'jupyter-book', 'asyncmock'],
                   'notebook': ['jupyterlab', 'matplotlib']}
 extras_require['complete'] = sorted(set(sum(extras_require.values(), [])))
 
