@@ -10,8 +10,6 @@ from hep_tables.statements import (
 
 from hep_tables.utils import _is_of_type, new_term
 
-from .utils_for_testing import f, reset_var_counter  # NOQA
-
 
 @pytest.fixture
 def object_stream(mocker):
@@ -609,7 +607,7 @@ def test_constant_func(object_stream):
     assert s.apply(object_stream) == 10
 
 
-def test_constant_func(object_stream):
+def test_constant_func_applied(object_stream):
     s = statement_constant(ast.Num(n=10), 10, int)
     t = s.apply_as_function(new_term(object))
     assert t.term == '10'

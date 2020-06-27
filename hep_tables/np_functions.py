@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union, List
 import ast
 
 from dataframe_expressions import DataFrame
+from dataframe_expressions.asts import ast_DataFrame
 from .utils import to_ast
 
 
@@ -31,6 +32,6 @@ def histogram(df: DataFrame, bins: Union[int, List[float]] = 10,
         ast.keyword(arg="density", value=to_ast(density)),
     ]
 
-    call_node = ast.Call(func=ast.Attribute(value=ast.Name('p'), attr='histogram'),
+    call_node = ast.Call(func=ast.Attribute(value=ast_DataFrame(df), attr='histogram'),
                          args=[], keywords=keywords)
-    return DataFrame(df, call_node)
+    return DataFrame(call_node)

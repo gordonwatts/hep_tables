@@ -25,7 +25,7 @@ setup(name="hep_tables",
       url="https://github.com/gordonwatts/hep_tables",
       license="TBD",
       test_suite="tests",
-      install_requires=["func_adl_xaod", "servicex", "make_it_sync"],
+      install_requires=["func_adl_xaod>=1.1b1", "servicex>=2b1", "make_it_sync"],
       extras_require=extras_require,
       classifiers=[
                    # "Development Status :: 3 - Alpha",

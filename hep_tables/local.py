@@ -5,7 +5,6 @@ from typing import List, Union
 
 from dataframe_expressions import DataFrame, render, Column
 from func_adl.ObjectStream import ObjectStream
-from func_adl_xAOD import use_exe_servicex
 from make_it_sync import make_sync
 
 from hep_tables.hep_table import xaod_table
@@ -27,7 +26,7 @@ def _dump_ast(statements: List[statement_base]):
     return '\n'.join(lines)
 
 
-async def make_local_async(df: Union[DataFrame, Column], force_rerun: bool = False) -> Any:
+async def make_local_async(df: Union[DataFrame, Column]) -> Any:
     '''
     Render a DataFrame's contents locally.
 
@@ -69,8 +68,7 @@ async def make_local_async(df: Union[DataFrame, Column], force_rerun: bool = Fal
 
     if isinstance(result, ObjectStream):
         return (await result.AsAwkwardArray(['col1'])
-                .value_async(
-            lambda a: use_exe_servicex(a, cached_results_OK=not force_rerun)))[default_col_name]
+                .value_async())[default_col_name]
     else:
         return result
 

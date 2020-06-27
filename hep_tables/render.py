@@ -8,7 +8,6 @@ from contextlib import ExitStack
 from dataframe_expressions import (
     ast_Callable, ast_DataFrame, ast_Filter, ast_FunctionPlaceholder,
     render_callable, render_context)
-from func_adl_xAOD import use_exe_servicex
 
 from .statements import (
     _monad_manager, statement_base, statement_constant, statement_df,
@@ -326,7 +325,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             result = seq.apply(result)
 
         if isinstance(result, ObjectStream):
-            return result.AsAwkwardArray(['col1']).value(use_exe_servicex)[default_col_name]
+            return result.AsAwkwardArray(['col1']).value()[default_col_name]
         else:
             return result
 
@@ -336,6 +335,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         Generate a histogram. We can't do this in the abstract, unfortunately,
         as we have to get the data and apply the numpy.histogram at this upper level.
         '''
+        # TODO: This cant be done async as it is written here, so clearly this is broken.
         assert len(args) == 0, 'Do not know how to process extra args for numpy.histogram'
         data = self.render_locally(value)
         if hasattr(data, 'flatten'):

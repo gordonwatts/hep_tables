@@ -6,21 +6,44 @@ import shutil
 import tempfile
 from unittest import mock
 
-from func_adl import EventDataset
+from servicex import ServiceXDataset
 import pytest
-import servicex.servicex as fe
 
 import hep_tables.local as hep_local
 from hep_tables.utils import reset_new_var_counter
 from dataframe_expressions.alias import _reset_alias_catalog
 from servicex import clean_linq
+import asyncmock
 
-
-# For use in testing - a mock.
-f = EventDataset('locads://bogus')
 
 # dump out logs
 logging.basicConfig(level=logging.NOTSET)
+
+
+@pytest.fixture
+def servicex_ds(mocker):
+    'Create a mock ServiceXDataset'
+
+    # Just pattern it off the real one.
+    x = asyncmock.AsyncMock(spec=ServiceXDataset)
+
+    # We need to return a loaded file.
+    import uproot
+    f_in = uproot.open('tests/sample_servicex_output.root')
+    try:
+        r = f_in[f_in.keys()[0]]
+        data = r.arrays()  # type: ignore
+    finally:
+        f_in._context.source.close()
+
+    x.get_data_awkward_async.return_value = data
+
+    return x
+
+
+def extract_selection(ds):
+    'Extract the selection from the magic mock for the dataset for the last call'
+    return ds.get_data_awkward_async.call_args[0][0]
 
 
 @pytest.fixture(autouse=True)
@@ -53,6 +76,7 @@ def reset_var_counter():
 
 @pytest.fixture(scope="module")
 def reduce_wait_time():
+    import servicex.servicex_adaptor as fe
     old_value = fe.servicex_status_poll_time
     fe.servicex_status_poll_time = 0.01
     yield None
@@ -123,7 +147,7 @@ def translate_linq(expr) -> str:
     '''
     expr is the LINQ expression, short of the value. We return the `qastle` AST.
     '''
-    def translate(a: ast.AST):
+    async def translate(a: ast.AST):
         import qastle
         return qastle.python_ast_to_text_ast(a)
 

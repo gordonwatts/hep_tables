@@ -3,7 +3,7 @@ from typing import List, Dict
 
 from dataframe_expressions import ast_DataFrame
 from dataframe_expressions.render import render
-from func_adl import EventDataset
+from func_adl_xAOD import ServiceXDatasetSource
 import pytest
 
 from hep_tables import xaod_table
@@ -11,11 +11,9 @@ from hep_tables.utils import (
     _find_dataframes, _find_root_expr, _index_text_tuple, _is_list,
     _parse_elements, _unwrap_list, _type_replace, _is_of_type, _count_list)
 
-# For use in testing - a mock.
-f = EventDataset('locads://bogus')
 
-
-def test_find_dataframes():
+def test_find_dataframes(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
     seq = df.jets.pt
     expr, _ = render(seq)
@@ -25,7 +23,8 @@ def test_find_dataframes():
     assert found_df.dataframe is df
 
 
-def test_find_nested_dataframes():
+def test_find_nested_dataframes(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
     seq = df.jets[df.jets.pt > 30].pt
     expr, _ = render(seq)
@@ -35,7 +34,8 @@ def test_find_nested_dataframes():
     assert found_df.dataframe is df
 
 
-def test_find_root_ast_df_nested():
+def test_find_root_ast_df_nested(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
     a = ast_DataFrame(df)
 
@@ -46,7 +46,8 @@ def test_find_root_ast_df_nested():
     assert r is a
 
 
-def test_find_root_ast_df_simple():
+def test_find_root_ast_df_simple(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
     a = ast_DataFrame(df)
 
@@ -55,7 +56,8 @@ def test_find_root_ast_df_simple():
     assert r is a
 
 
-def test_find_root_no_root():
+def test_find_root_no_root(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
     a = ast_DataFrame(df)
 
@@ -63,7 +65,8 @@ def test_find_root_no_root():
     assert r is None
 
 
-def test_find_root_ast():
+def test_find_root_ast(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
     a = ast_DataFrame(df)
 
@@ -75,7 +78,8 @@ def test_find_root_ast():
     assert r is attr
 
 
-def test_find_root_in_function():
+def test_find_root_in_function(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
     a = ast_DataFrame(df)
 
@@ -86,7 +90,8 @@ def test_find_root_in_function():
     assert r is attr
 
 
-def test_find_root_arg_not_right():
+def test_find_root_arg_not_right(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
     a = ast_DataFrame(df)
 
