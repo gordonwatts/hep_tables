@@ -42,7 +42,7 @@ def curry(f: Callable) -> Callable:
             new_args = args + (last_arg,)
             return f(*new_args)
 
-        assert len(args) == (nargs-1)
+        assert len(args) == (nargs - 1)
         return apply_last_arg
 
     return build_curried_function
@@ -696,7 +696,7 @@ _known_operators: Dict[Type, Tuple[str, Type]] = {
     ast.NotEq: ('!=', bool),
     ast.And: ('and', bool),
     ast.Or: ('or', bool),
-    }
+}
 
 
 def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context: render_context,

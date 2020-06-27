@@ -5,7 +5,7 @@ from dataframe_expressions import ast_DataFrame
 
 
 def _find_dataframes(a: ast.AST) -> ast_DataFrame:
-    'Find the asts that represent dataframs. Limit to one or failure for now'
+    'Find the asts that represent dataframes. Limit to one or failure for now'
     class df_scanner(ast.NodeVisitor):
         def __init__(self):
             self.found_frames: List[ast_DataFrame] = []
@@ -77,7 +77,7 @@ def _find_root_expr(expr: ast.AST, possible_root: ast.AST) -> Optional[ast.AST]:
         possible_root   Root
 
     Result:
-        expr            First hit in the standard ast.NodeVistor algorithm that is
+        expr            First hit in the standard ast.NodeVisitor algorithm that is
                         either the a object or an instance of type `ast_DataFrame`.
 
     ## Notes:
@@ -124,18 +124,18 @@ def _parse_elements(s: str) -> List[str]:
         for i, c in enumerate(part_list):
             if i >= ignore_before:
                 if c == ',':
-                    result.append(i+1)
+                    result.append(i + 1)
                 if c == ')':
-                    return result, i+1
+                    return result, i + 1
                 if c == '(':
-                    r, pos = parse_for_commas(part_list[i+1:])
+                    r, pos = parse_for_commas(part_list[i + 1:])
                     ignore_before = i + pos + 1
 
         return result, len(part_list)
 
     commas, _ = parse_for_commas(s[1:-1])
     bounds = [1] + [c + 1 for c in commas] + [len(s)]
-    segments = [s[i:j-1] for i, j in zip(bounds, bounds[1:])]
+    segments = [s[i:j - 1] for i, j in zip(bounds, bounds[1:])]
 
     return segments
 
@@ -155,7 +155,7 @@ def _index_text_tuple(s: str, index: int) -> str:
 
 
 def _is_list(t: Type) -> bool:
-    return t.__origin__ is list if not isinstance(t, type) else False
+    return t.__origin__ is list if not isinstance(t, type) else False  # type: ignore
 
 
 def _unwrap_list(t: Type) -> Type:
@@ -170,7 +170,7 @@ def _unwrap_if_possible(t: Type) -> Type:
 
 
 def _same_generic_type(t1: Type, t2: Type) -> bool:
-    from typing import _GenericAlias
+    from typing import _GenericAlias  # type: ignore
     if not isinstance(t1, _GenericAlias) or not isinstance(t2, _GenericAlias):
         return False
 
@@ -211,7 +211,7 @@ def _type_replace(source_type: Type, find: Type, replace: Type) -> Optional[Type
 
     If source_type contains no `find`, then return None
     '''
-    from typing import _GenericAlias
+    from typing import _GenericAlias  # type: ignore
     if isinstance(source_type, _GenericAlias):
         if source_type._name == 'List':
             r = _type_replace(source_type.__args__[0], find, replace)
@@ -226,7 +226,7 @@ def _type_replace(source_type: Type, find: Type, replace: Type) -> Optional[Type
 
 def _count_list(t: Type) -> int:
     'Count number of List in a nested List'
-    from typing import _GenericAlias
+    from typing import _GenericAlias  # type: ignore
     if not isinstance(t, _GenericAlias):
         return 0
 

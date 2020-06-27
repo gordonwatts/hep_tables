@@ -34,7 +34,7 @@ jobs:
     - name: Test with pytest
       run: |
         python -m pytest
-    - name: Report coverage with Codecov
+    - name: Report coverage with Code Coverage
       if: github.event_name == 'push' && matrix.python-version == 3.7 && matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v1
       with:
