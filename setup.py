@@ -12,7 +12,7 @@ extras_require = {'test': ['pytest', 'pytest-asyncio', 'pytest-cov', 'pytest-moc
 extras_require['complete'] = sorted(set(sum(extras_require.values(), [])))
 
 setup(name="hep_tables",
-      version='0.0.1a1',
+      version='1.0.0b1',
       packages=['hep_tables'],
       scripts=[],
       description="Tables for structured data",
@@ -25,7 +25,8 @@ setup(name="hep_tables",
       url="https://github.com/gordonwatts/hep_tables",
       license="TBD",
       test_suite="tests",
-      install_requires=["func_adl_xaod>=1.1b1", "servicex>=2b1", "make_it_sync"],
+      install_requires=["func_adl_xaod>=1.1b1", "servicex>=2b1", "dataframe_expressions",
+                        "make_it_sync"],
       extras_require=extras_require,
       classifiers=[
                    # "Development Status :: 3 - Alpha",
