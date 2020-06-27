@@ -7,7 +7,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 extras_require = {'test': ['pytest', 'pytest-asyncio', 'pytest-cov', 'pytest-mock', 'flake8',
-                           'coverage', 'twine', 'jupyter-book'],
+                           'coverage', 'twine', 'wheel', 'jupyter-book'],
                   'notebook': ['jupyterlab', 'matplotlib']}
 extras_require['complete'] = sorted(set(sum(extras_require.values(), [])))
 
@@ -25,7 +25,7 @@ setup(name="hep_tables",
       url="https://github.com/gordonwatts/hep_tables",
       license="TBD",
       test_suite="tests",
-      install_requires=["func_adl_xaod>=1.1b1", "servicex>=2b1", "dataframe_expressions",
+      install_requires=["func_adl_xaod>=1.1b1", "servicex>=2b1", "dataframe_expressions>=1.0b1",
                         "make_it_sync"],
       extras_require=extras_require,
       classifiers=[
