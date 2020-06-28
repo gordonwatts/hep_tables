@@ -58,7 +58,6 @@ async def make_local_async(df: Union[DataFrame, Column]) -> Any:
 
     # Render the expression to a LINQ expression.
     # We start with the dataframe.
-    # TODO: Dataframe_expressions need dataframe declared as an object stream
     result = base_ast_df.dataframe.event_source
     for seq in statements:
         result = seq.apply(result)

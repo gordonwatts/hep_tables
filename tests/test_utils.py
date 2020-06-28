@@ -237,16 +237,3 @@ def test_count_list_one():
 
 def test_count_list_two():
     assert _count_list(List[List[int]]) == 2
-
-# def test_fail_to_find_two_dataframes():
-#     df1 = xaod_table(f)
-#     f2 = EventDataset('locads://bogusss')
-#     df2 = xaod_table(f2)
-
-#     deq = df1.jets[df2.jets.pt > 30].pt
-#     expr = render(deq)
-
-#     with pytest.raises(Exception):
-#         _find_dataframes(expr)
-# TODO: this doesn't fail yet, but it should - error seems to be in the underlying library.
-# Since this is a prototype, no need to chase it down right now.

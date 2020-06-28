@@ -74,8 +74,6 @@ class replace_an_ast:
         self._done = False
 
     def __enter__(self):
-        # TODO: WARNING - this might be hiding aliases, if we ever want to do two things
-        # of the same object, then this might cause us problems!!!
         if self._tracker.lookup_ast(self._source) is None:
             self._tracker.ast_replacements.append((self._source, self._dest))
             self._done = True
@@ -316,7 +314,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
 
         base_ast_df = _find_dataframes(v)
 
-        # TODO: THis is the same code as in make_local - perhaps????
+        # #3 THis is the same code as in make_local - perhaps????
         mapper = _map_to_data(statement_df(base_ast_df), self.context, self)
         mapper.visit(v)
 
@@ -335,7 +333,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         Generate a histogram. We can't do this in the abstract, unfortunately,
         as we have to get the data and apply the numpy.histogram at this upper level.
         '''
-        # TODO: This cant be done async as it is written here, so clearly this is broken.
+        # #5 This cant be done async as it is written here, so clearly this is broken.
+        # #4 Rationalize how histograms should be made using the full power of... numpy or whatever.
         assert len(args) == 0, 'Do not know how to process extra args for numpy.histogram'
         data = self.render_locally(value)
         if hasattr(data, 'flatten'):
@@ -498,8 +497,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                         stem = single.apply_as_function(stem)
                     return r, stem
                 else:
-                    # TODO: if we remove this if block, then this look like _resolve_inline.
-                    # This tests fail if we do that - understand if we really need this.
+                    # #6 Is this block of code really needed?
                     self.statements += s
                     self.sequence = s[-1]
                     r = new_term(_unwrap_list(self.sequence.result_type))
@@ -748,7 +746,7 @@ def _resolve_expr_inline(curret_sequence: statement_base, expr: ast.AST, context
         else:
             prep_statement = filter_sequence
         for s in prep_statement:
-            # TODO: KLUDGE!!!!
+            # #7 KLUDGE!!!!
             s1 = cast(_monad_manager, s)
             s1._previous_statement_monad = False
             s1._monads = []
@@ -776,7 +774,7 @@ def _type_system(n: str) -> Tuple[Type, Type]:
     '''
     Determine the type of method/prop that is being accessed. This
     is using heuristics.
-    TODO: This needs to be robust! Big can of worms
+    #8 We need a real type system.
 
     Args:
         n           Name of the method that we are looking at. No context is given, just name.

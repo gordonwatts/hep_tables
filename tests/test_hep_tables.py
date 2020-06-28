@@ -1,16 +1,11 @@
-import pytest
-
-from hep_tables import make_local, xaod_table
 from dataframe_expressions import DataFrame
-
 from func_adl_xAOD import ServiceXDatasetSource
-
+import pytest
 from servicex import clean_linq
 
-from .conftest import (
-    translate_linq,
-    extract_selection
-    )
+from hep_tables import make_local, xaod_table
+
+from .conftest import extract_selection, translate_linq
 
 
 @pytest.fixture(autouse=True)
@@ -43,8 +38,6 @@ def test_copy_xaod_table_2(servicex_ds):
     assert x1 is not x2
     assert isinstance(x1, DataFrame)
 
-
-# TODO: This should not depend on func_adl_xaod, but just on func_adl.
 
 def test_collect_pts(servicex_ds):
     f = ServiceXDatasetSource(servicex_ds)
@@ -280,18 +273,6 @@ def test_filter_chain(servicex_ds):
                          .Select("lambda e5: e5.Select(lambda e2: e2.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(selection) == txt
-
-
-# TODO: this is probably an error that should be flagged
-# def test_filter_chain_bad(servicex_ds):
-#     f = ServiceXDatasetSource(servicex_ds)
-#     df = xaod_table(f)
-#     # Tempting, but very wrong. Or maybe it is ok, as long as we are careful in our code
-#     seq = df.jets[df.jets.pt > 30.0][df.jets.eta < 2.4]
-#     with pytest.raises(Exception) as e:
-#         make_local(seq)
-
-#     assert "filter" in str(e.value)
 
 
 def test_filter_and_divide(servicex_ds):

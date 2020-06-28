@@ -334,8 +334,8 @@ class statement_base_iterator(_monad_manager, statement_base):
                     .copy_monad_info(self))
 
     def wrap(self) -> statement_base:
-        new_input_type = List[self._input_sequence_type]
-        new_result_type = List[self._result_sequence_type]
+        new_input_type = List[self._input_sequence_type]  # type: ignore
+        new_result_type = List[self._result_sequence_type]  # type: ignore
 
         return cast(statement_base, self.clone_with_types(new_input_type, new_result_type)
                     .copy_monad_info(self))
@@ -398,7 +398,7 @@ class statement_where(statement_base_iterator):
                                          input_sequence_type, iterator,
                                          function, True)
 
-        # TODO: does this belong here or in the select statement?
+        # Does this belong here or in the select statement?
         for t in self._func.monad_refs:
             self.set_monad_ref(t)
             self.prev_statement_is_monad()
