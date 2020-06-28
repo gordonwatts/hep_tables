@@ -12,7 +12,7 @@ extras_require = {'test': ['pytest', 'pytest-asyncio', 'pytest-cov', 'pytest-moc
 extras_require['complete'] = sorted(set(sum(extras_require.values(), [])))
 
 setup(name="hep_tables",
-      version='1.0.0b2',
+      version='1.0.0',
       packages=['hep_tables'],
       scripts=[],
       description="Tables for structured data",
