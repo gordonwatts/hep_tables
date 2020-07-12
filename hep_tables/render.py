@@ -1,20 +1,19 @@
 from __future__ import annotations
+
 import ast
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Type, cast
 from contextlib import ExitStack
+from typing import Callable, Dict, List, Optional, Tuple, Type, cast
 
+from dataframe_expressions import (ast_Callable, ast_DataFrame, ast_Filter,
+                                   ast_FunctionPlaceholder, render_callable,
+                                   render_context)
 
-from dataframe_expressions import (
-    ast_Callable, ast_DataFrame, ast_Filter, ast_FunctionPlaceholder,
-    render_callable, render_context)
-
-from .statements import (
-    _monad_manager, statement_base, statement_constant, statement_df,
-    statement_select, statement_where, term_info)
-from .utils import (
-    _find_root_expr, _is_list, _type_replace, _unwrap_list, _unwrap_if_possible,
-    new_var_name, new_term, to_args_from_keywords)
+from .statements import (_monad_manager, statement_base, statement_constant,
+                         statement_select, statement_where, term_info)
+from .utils import (_find_root_expr, _is_list, _type_replace,
+                    _unwrap_if_possible, _unwrap_list, new_term, new_var_name,
+                    to_args_from_keywords)
 
 
 class RenderException(Exception):
@@ -308,24 +307,29 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         '''
         Render v locally as data
         '''
-        from .utils import _find_dataframes
-        from .local import default_col_name
-        from func_adl import ObjectStream
+        from .local import _make_local_from_expression
 
-        base_ast_df = _find_dataframes(v)
+        return _make_local_from_expression(v, self.context)
 
-        # #3 THis is the same code as in make_local - perhaps????
-        mapper = _map_to_data(statement_df(base_ast_df), self.context, self)
-        mapper.visit(v)
+        # TODO: Make sure this code can be deleted.
+        # from .utils import _find_dataframes
+        # from .local import default_col_name
+        # from func_adl import ObjectStream
 
-        result = base_ast_df.dataframe.event_source
-        for seq in mapper.statements:
-            result = seq.apply(result)
+        # base_ast_df = _find_dataframes(v)
 
-        if isinstance(result, ObjectStream):
-            return result.AsAwkwardArray(['col1']).value()[default_col_name]
-        else:
-            return result
+        # # #3 THis is the same code as in make_local - perhaps????
+        # mapper = _map_to_data(statement_df(base_ast_df), self.context, self)
+        # mapper.visit(v)
+
+        # result = base_ast_df.dataframe.event_source
+        # for seq in mapper.statements:
+        #     result = seq.apply(result)
+
+        # if isinstance(result, ObjectStream):
+        #     return result.AsAwkwardArray(['col1']).value()[default_col_name]
+        # else:
+        #     return result
 
     def visit_call_histogram(self, value: ast.AST, args: List[ast.AST],
                              keywords: List[ast.keyword], a: ast.Call):
