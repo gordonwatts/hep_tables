@@ -47,4 +47,7 @@
         "unittests",
         "xaod"
     ],
+    "python.testing.pytestArgs": [
+        "--no-cov"
+    ],
 }
