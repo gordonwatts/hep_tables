@@ -15,6 +15,7 @@
         "backends",
         "binop",
         "codecov",
+        "dataframe",
         "dcache",
         "desy",
         "eles",

@@ -9,11 +9,10 @@ from dataframe_expressions import (ast_Callable, ast_DataFrame, ast_Filter,
                                    ast_FunctionPlaceholder, render_callable,
                                    render_context)
 
-from .statements import (_monad_manager, statement_base, statement_constant,
-                         statement_select, statement_where, term_info)
+from .statements import (_monad_manager, statement_base, statement_select,
+                         statement_where, term_info)
 from .utils import (_find_root_expr, _is_list, _type_replace,
-                    _unwrap_if_possible, _unwrap_list, new_term, new_var_name,
-                    to_args_from_keywords)
+                    _unwrap_if_possible, _unwrap_list, new_term, new_var_name)
 
 
 class RenderException(Exception):
@@ -302,55 +301,6 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         # Now we need to "select" a level here. This means doing a call.
         name = a.attr
         self.append_call(a, name, None)
-
-    def render_locally(self, v: ast.AST):
-        '''
-        Render v locally as data
-        '''
-        from .local import _make_local_from_expression
-
-        return _make_local_from_expression(v, self.context)
-
-        # TODO: Make sure this code can be deleted.
-        # from .utils import _find_dataframes
-        # from .local import default_col_name
-        # from func_adl import ObjectStream
-
-        # base_ast_df = _find_dataframes(v)
-
-        # # #3 THis is the same code as in make_local - perhaps????
-        # mapper = _map_to_data(statement_df(base_ast_df), self.context, self)
-        # mapper.visit(v)
-
-        # result = base_ast_df.dataframe.event_source
-        # for seq in mapper.statements:
-        #     result = seq.apply(result)
-
-        # if isinstance(result, ObjectStream):
-        #     return result.AsAwkwardArray(['col1']).value()[default_col_name]
-        # else:
-        #     return result
-
-    def visit_call_histogram(self, value: ast.AST, args: List[ast.AST],
-                             keywords: List[ast.keyword], a: ast.Call):
-        '''
-        Generate a histogram. We can't do this in the abstract, unfortunately,
-        as we have to get the data and apply the numpy.histogram at this upper level.
-        '''
-        # #5 This cant be done async as it is written here, so clearly this is broken.
-        # #4 Rationalize how histograms should be made using the full power of... numpy or whatever.
-        assert len(args) == 0, 'Do not know how to process extra args for numpy.histogram'
-        data = self.render_locally(value)
-        if hasattr(data, 'flatten'):
-            data = getattr(data, 'flatten')()
-        import numpy as np
-        kwargs = to_args_from_keywords(keywords)
-        result = np.histogram(data, bins=kwargs['bins'],
-                              range=kwargs['range'],
-                              density=kwargs['density'])
-        st = statement_constant(a, result, type(result))
-        self.statements.append(st)
-        self.sequence = st
 
     def visit_call_map(self, value: ast.AST, args: List[ast.AST],
                        keywords: List[ast.keyword], a: ast.Call):

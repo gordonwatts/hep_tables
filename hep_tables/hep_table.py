@@ -24,7 +24,7 @@ class xaod_table (DataFrame):
 
         for s in events:
             if not isinstance(s, EventDataset):
-                raise Exception('xaod_table can only work with EventDataset derived data sources')
+                raise Exception(f'xaod_table can only work with EventDataset derived data sources: {s}')
 
         self.event_source = events
 

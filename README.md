@@ -8,8 +8,10 @@ This is prototyping accessing hierarchical data and using other backends to proc
 
 This is designed to use array-like programming to generate `func_adl` code to render the data.
 
-- I uses the `dataframe_expressions` package as the user interface (the API) for data frame operations.
+- It uses the `dataframe_expressions` package as the user interface (the API) for data frame operations.
 - It assumes that everything starts from a data source that the `func_adl` tools understand.
+- Only operations supported by `func_adl` are supported by `hep_tables`. Anything at a higher
+  level (like making a histogram) is done outside this package by, for example, `hl_tables`.
 - The whole package is experimental, but it does support some small amount of local processing (e.g. the histogram function). However, after this library was built, it was decided to move most higher-order processing off to the `hl_tables` package, which uses this to execute part of the work.
 
 ## Some Notes
