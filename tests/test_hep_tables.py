@@ -27,6 +27,21 @@ def test_create_multibase(servicex_ds):
     _ = xaod_table(f1, f2)
 
 
+def test_create_bad_empty():
+    with pytest.raises(Exception):
+        xaod_table()
+
+
+def test_create_bad_option():
+    with pytest.raises(Exception):
+        xaod_table("hi there")
+
+
+def test_create_bad_multi_option():
+    with pytest.raises(Exception):
+        xaod_table(["hi there", "dude"])
+
+
 def test_copy_xaod_table_1(servicex_ds):
     f = ServiceXDatasetSource(servicex_ds)
     x1 = xaod_table(f)

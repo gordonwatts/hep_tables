@@ -364,7 +364,7 @@ class statement_select(statement_base_iterator):
                                 self._iterator, self._func)
 
     def apply(self, seq: object) -> ObjectStream:
-        assert isinstance(seq, ObjectStream), 'Internal error'
+        assert isinstance(seq, ObjectStream), f'Internal error: {seq}'
         inner_lambda = self._render_as_function(term_info(self._iterator.term,
                                                           self._input_sequence_type),
                                                 'Select', True)
@@ -408,7 +408,7 @@ class statement_where(statement_base_iterator):
                                self._iterator, self._func)
 
     def apply(self, seq: object) -> ObjectStream:
-        assert isinstance(seq, ObjectStream), 'Internal error'
+        assert isinstance(seq, ObjectStream), f'Internal error: {seq}'
         inner_lambda = self._render_as_function(term_info(self._iterator.term,
                                                           self._input_sequence_type),
                                                 'Where', True)
