@@ -46,7 +46,8 @@
         "setuptools",
         "treeme",
         "unittests",
-        "xaod"
+        "xaod",
+        "xrootd"
     ],
     "python.testing.pytestArgs": [
         "--no-cov"
