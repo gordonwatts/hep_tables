@@ -1,16 +1,11 @@
-from dataframe_expressions import user_func
 import pytest
+from dataframe_expressions import user_func
+from func_adl_xAOD import ServiceXDatasetSource
+from servicex import clean_linq
 
 from hep_tables import make_local, xaod_table
 
-from func_adl_xAOD import ServiceXDatasetSource
-
-from servicex import clean_linq
-
-from .conftest import (
-    translate_linq,
-    extract_selection
-    )
+from .conftest import extract_selection, translate_linq
 
 
 def test_user_function_with_implied(servicex_ds):

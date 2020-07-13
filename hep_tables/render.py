@@ -11,8 +11,8 @@ from dataframe_expressions import (ast_Callable, ast_DataFrame, ast_Filter,
 
 from .statements import (_monad_manager, statement_base, statement_select,
                          statement_where, term_info)
-from .utils import (_find_root_expr, _is_list, _type_replace,
-                    _unwrap_if_possible, _unwrap_list, new_term, new_var_name)
+from .utils import (QueryVarTracker, _find_root_expr, _is_list, _type_replace,
+                    _unwrap_if_possible, _unwrap_list)
 
 
 class RenderException(Exception):
@@ -97,12 +97,12 @@ def _render_expresion_as_transform(tracker: _statement_tracker, context: render_
     else:
         assert len(statements) == 0, \
             f'Internal programming error - cannot deal with statements and term {term.term}'
-        vn = new_term(_unwrap_list(tracker.sequence.result_type)
-                      if _is_list(tracker.sequence.result_type)
-                      else tracker.sequence.result_type)
+        vn = tracker.qvt.new_term(_unwrap_list(tracker.sequence.result_type)
+                                  if _is_list(tracker.sequence.result_type)
+                                  else tracker.sequence.result_type)
         in_type = tracker.sequence.result_type
         out_type = _type_replace(in_type, vn.type, term.type)
-        st_select = statement_select(a, in_type, out_type, vn, term)
+        st_select = statement_select(a, in_type, out_type, vn, term, tracker.qvt)
         tracker.statements.append(st_select)
         tracker.sequence = st_select
 
@@ -147,7 +147,7 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
 
             # The var we are going to loop over is a pointer to the sequence.
             seq_as_object = tracker.sequence.unwrap_if_possible()
-            select_var = new_term(seq_as_object.result_type)
+            select_var = tracker.qvt.new_term(seq_as_object.result_type)
             select_var_rep_ast = _ast_VarRef(select_var)
 
             with tracker.substitute_ast(tracker.sequence._ast, select_var_rep_ast):
@@ -155,7 +155,7 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
 
         result_type = _type_replace(tracker.sequence.result_type, select_var.type, trm.type)
         st = statement_select(a, tracker.sequence.result_type, result_type,
-                              select_var, trm)
+                              select_var, trm, tracker.qvt)
         if trm.has_monads():
             st.prev_statement_is_monad()
             st.set_monad_ref(monad_ref)
@@ -175,12 +175,26 @@ class _statement_tracker:
     Track statements in separate stacks. We have a parent link so we can
     look all the way back in the stack if need be when looking for a replacement.
     '''
-    def __init__(self, start_sequence: statement_base, parent: Optional[_statement_tracker]):
+    def __init__(self, start_sequence: statement_base,
+                 parent: Optional[_statement_tracker],
+                 var_tracker: Optional[QueryVarTracker] = None):
         self._parent_tracker = parent
         self.statements: List[statement_base] = []
         self.sequence = start_sequence
         self.base_sequence = start_sequence
         self.ast_replacements: List[Tuple[ast.AST, ast.AST]] = []
+
+        self._query_var_tracker = None
+        if var_tracker is not None:
+            self._query_var_tracker = var_tracker
+        elif parent is not None and parent.qvt is not None:
+            self._query_var_tracker = parent.qvt
+        assert self._query_var_tracker is not None
+
+    @property
+    def qvt(self):
+        'Return a query variable tracker'
+        return self._query_var_tracker
 
     def carry_monad_forward(self, a: ast.AST) -> int:
         '''
@@ -201,7 +215,7 @@ class _statement_tracker:
             m_index = self._parent_tracker.carry_monad_forward(a)
             index = -1
         else:
-            m_name = new_var_name()
+            m_name = self._query_var_tracker.new_var_name()
             m_index = self.statements[index].add_monad(m_name, m_name)
 
         # Now bring the monad as far forward as we can.
@@ -279,13 +293,13 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         self.visit(a.expr)
 
         seq_type = self.sequence.result_type
-        var_name = new_term(_unwrap_list(seq_type) if _is_list(seq_type) else seq_type)
+        var_name = self.qvt.new_term(_unwrap_list(seq_type) if _is_list(seq_type) else seq_type)
         with self.substitute_ast(self.sequence._ast,
                                  _ast_VarRef(var_name)):
             # We will put this inside a Where statement, so instead of a sequence,
             # we will be dealing with an unwrapped sequence.
             term = _resolve_expr_inline(self.sequence, a.filter, self.context, self)
-            st = statement_where(a, self.sequence.result_type, var_name, term)
+            st = statement_where(a, self.sequence.result_type, var_name, term, self.qvt)
             # This is a bit of a kludge
             if len(self.statements) > 0:
                 if self.statements[-1].has_monads():
@@ -345,7 +359,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             if func_return_type is inspect.Signature.empty:
                 raise Exception(f"User Error: Function {name} needs return type python hints.")
 
-            var_name = new_term(_unwrap_if_possible(self.sequence.result_type))
+            var_name = self.qvt.new_term(_unwrap_if_possible(self.sequence.result_type))
             return_seq_type = _type_replace(self.sequence.result_type, var_name.type,
                                             func_return_type)
 
@@ -361,7 +375,8 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             monad_refs = set([item for sublist in resolved_args for item in sublist.monad_refs])
 
             st = statement_select(a, self.sequence.result_type, return_seq_type, var_name,
-                                  term_info(f'{name}({args})', func_return_type, list(monad_refs)))
+                                  term_info(f'{name}({args})', func_return_type, list(monad_refs)),
+                                  self.qvt)
             self.statements.append(st)
             self.sequence = st
         else:
@@ -380,18 +395,21 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         # Build the function call
         arg_text = "" if args is None else ", ".join([str(ag) for ag in args])
         function_call = f'{name_of_method}({arg_text})'
-        iterator_name = new_term(f_input_type)
+        iterator_name = self.qvt.new_term(f_input_type)
         expr = f'{iterator_name.term}.{function_call}'
 
         # Finally, build the call statement as a select, and then update the current sequence.
         select = statement_select(a, self.sequence.result_type, result_type,
-                                  iterator_name, term_info(expr, f_result_type))
+                                  iterator_name, term_info(expr, f_result_type),
+                                  self.qvt)
         self.statements.append(select)
         self.sequence = select
 
 
 def _render_expression(current_sequence: statement_base, a: ast.AST,
-                       context: render_context, p_tracker: Optional[_statement_tracker]) \
+                       context: render_context,
+                       p_tracker: Optional[_statement_tracker],
+                       qvt: Optional[QueryVarTracker] = None) \
         -> Tuple[List[statement_base], term_info]:
     '''
     Render an expression. If the expression contains linq selections stuff, then we will
@@ -410,9 +428,10 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
     '''
     class render_expression(_statement_tracker, ast.NodeVisitor):
         def __init__(self, current_sequence: statement_base, context: render_context,
-                     p_tracker: Optional[_statement_tracker]):
+                     p_tracker: Optional[_statement_tracker],
+                     qvt: Optional[QueryVarTracker] = None):
             ast.NodeVisitor.__init__(self)
-            _statement_tracker.__init__(self, current_sequence, p_tracker)
+            _statement_tracker.__init__(self, current_sequence, p_tracker, qvt)
             self.term_stack: List[term_info] = []
             self.context = context
 
@@ -442,10 +461,10 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 if t.term != 'main_sequence':
                     return t, t
                 if len(s) == 0:
-                    r = new_term(self.sequence.result_type)
+                    r = self.qvt.new_term(self.sequence.result_type)
                     return r, r
                 if not _is_list(s[-1].result_type):
-                    stem = new_term(self.sequence.result_type)
+                    stem = self.qvt.new_term(self.sequence.result_type)
                     r = stem
                     for single in s:
                         stem = single.apply_as_function(stem)
@@ -454,7 +473,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                     # #6 Is this block of code really needed?
                     self.statements += s
                     self.sequence = s[-1]
-                    r = new_term(_unwrap_list(self.sequence.result_type))
+                    r = self.qvt.new_term(_unwrap_list(self.sequence.result_type))
                     return r, r
 
             l_l_iter, l_l = do_statements(s_left, left)
@@ -472,7 +491,8 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 monads = l_l.monad_refs + l_r.monad_refs
                 self.statements.append(statement_select(a, in_type, out_type,
                                                         l_l_iter,
-                                                        term_info(expr, op_type, list(monads))))
+                                                        term_info(expr, op_type, list(monads)),
+                                                        self.qvt))
                 self.sequence = self.statements[-1]
                 for m in monads:
                     self.sequence.set_monad_ref(m)
@@ -499,7 +519,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
         def visit_BoolOp(self, a: ast.BoolOp):
             'and or'
             assert len(a.values) == 2, 'Cannot do bool operations more than two operands'
-            var_name = new_term(self.sequence.result_type)
+            var_name = self.qvt.new_term(self.sequence.result_type)
             with self.substitute_ast(self.sequence._ast,
                                      _ast_VarRef(var_name)):
                 left = _resolve_expr_inline(self.sequence, a.values[0], self.context, self)
@@ -512,7 +532,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             out_type = _type_replace(in_type, _unwrap_list(in_type), bool)
             itr_unwrapped = term_info(var_name.term, _unwrap_list(in_type))
             st = statement_select(a, in_type, out_type, itr_unwrapped,
-                                  term_info(expr, bool, monads))
+                                  term_info(expr, bool, monads), self.qvt)
             self.statements.append(st)
             self.sequence = st
             self.term_stack.append(term_info('main_sequence', List[bool]))
@@ -521,7 +541,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             'invert'
             assert type(a.op) is ast.Invert, f'Unary operator {a.op} is not supported'
 
-            var_name = new_term(self.sequence.result_type)
+            var_name = self.qvt.new_term(self.sequence.result_type)
             with self.substitute_ast(self.sequence._ast,
                                      _ast_VarRef(var_name)):
                 operand = _resolve_expr_inline(self.sequence, a.operand, self.context, self)
@@ -531,7 +551,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             out_type = _type_replace(in_type, _unwrap_list(in_type), bool)
             itr_unwrapped = term_info(var_name.term, _unwrap_list(in_type))
             st = statement_select(a, in_type, out_type, itr_unwrapped, term_info(expr, bool,
-                                  operand.monad_refs))
+                                  operand.monad_refs), self.qvt)
             self.statements.append(st)
             self.sequence = st
             self.term_stack.append(term_info('main_sequence', List[bool]))
@@ -595,13 +615,14 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                             term_info(f'{_known_simple_math_functions[a.func.attr]}({v.term})',
                                       v.type, v.monad_refs))
                     else:
-                        var_name = new_term(float)
+                        var_name = self.qvt.new_term(float)
                         expr = f'({_known_simple_math_functions[a.func.attr]}({var_name.term}))'
                         # An exception will be thrown here if the input sequence isn't float.
                         self.statements.append(
                             statement_select(a, self.sequence.result_type,
                                              self.sequence.result_type,
-                                             var_name, term_info(expr, float)))
+                                             var_name, term_info(expr, float),
+                                             self.qvt))
                         self.term_stack.append(term_info('main_sequence',
                                                          self.sequence.result_type))
             elif isinstance(a.func, ast_Callable):
@@ -623,7 +644,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
                 # be inline and what should be outter.
                 self.process_with_mapper(a)
 
-    r = render_expression(current_sequence, context, p_tracker)
+    r = render_expression(current_sequence, context, p_tracker, qvt)
     r.visit(a)
     assert len(r.term_stack) == 1 or (len(r.term_stack) == 0 and len(r.statements) == 0)
     return r.statements, \

@@ -6,8 +6,8 @@ from typing import List, Tuple, Type, cast
 
 from func_adl import ObjectStream
 
-from hep_tables.utils import _index_text_tuple, new_var_name, _unwrap_list, \
-    _type_replace, new_term, _is_of_type, _is_list
+from hep_tables.utils import QueryVarTracker, _index_text_tuple, _unwrap_list, \
+    _type_replace, _is_of_type, _is_list
 
 
 class _monad_manager:
@@ -27,10 +27,11 @@ class _monad_manager:
         cls.monad_index += 1
         return v
 
-    def __init__(self):
+    def __init__(self, qvt: QueryVarTracker):
         self._monads: List[Tuple[str, str]] = []
         self._previous_statement_monad = False
         self._monad_ref: List[str] = []
+        self._qvt = qvt
         # TERMS already hold monads, should statements as well???
 
     def copy_monad_info(self, source: _monad_manager):
@@ -100,7 +101,7 @@ class _monad_manager:
         # Mark ourselves as a monad, man!
         self.prev_statement_is_monad()
 
-        tv = new_var_name()
+        tv = self._qvt.new_var_name()
         return self.add_monad(tv, f'{tv}[{index}]')
 
     def prev_statement_is_monad(self):
@@ -247,7 +248,8 @@ class statement_base_iterator(_monad_manager, statement_base):
     '''
     def __init__(self, ast_rep: ast.AST, input_sequence_type: Type,
                  result_sequence_type: Type, iterator: term_info,
-                 function: Type, pass_through: bool):
+                 function: Type, pass_through: bool,
+                 qvt: QueryVarTracker):
         '''
         Arguments:
             pass_through        Input and output types are the same, function result
@@ -255,9 +257,10 @@ class statement_base_iterator(_monad_manager, statement_base):
         '''
         statement_base.__init__(self, ast_rep, input_sequence_type,
                                 result_sequence_type)
-        _monad_manager.__init__(self)
+        _monad_manager.__init__(self, qvt)
         self._iterator = iterator
         self._func = function
+        self._qvt = qvt
         for m in function.monad_refs:
             self.set_monad_ref(m)
 
@@ -312,7 +315,7 @@ class statement_base_iterator(_monad_manager, statement_base):
             inner_func = inner_func.replace(self._iterator.term, iter.term)
             return term_info(inner_func, self._func.type)
         else:
-            v = new_term(_unwrap_list(in_type))
+            v = self._qvt.new_term(_unwrap_list(in_type))
             unwrapped = _unwrap_list(in_type)
             inner_func = self._render_inner(unwrapped, v, op)
             use_op = op if _is_of_type(unwrapped, self._iterator.type) else 'Select'
@@ -351,17 +354,17 @@ class statement_select(statement_base_iterator):
     '''
     def __init__(self, ast_rep: ast.AST, input_sequence_type: Type,
                  result_sequence_type, iterator: term_info,
-                 function: term_info):
+                 function: term_info, qvt: QueryVarTracker):
         '''
         Creates a select statement.
         '''
         statement_base_iterator.__init__(self, ast_rep, input_sequence_type,
                                          result_sequence_type, iterator,
-                                         function, False)
+                                         function, False, qvt)
 
     def clone_with_types(self, type_input: Type, type_output: Type) -> statement_base_iterator:
         return statement_select(self._ast, type_input, type_output,
-                                self._iterator, self._func)
+                                self._iterator, self._func, self._qvt)
 
     def apply(self, seq: object) -> ObjectStream:
         assert isinstance(seq, ObjectStream), f'Internal error: {seq}'
@@ -389,14 +392,15 @@ class statement_where(statement_base_iterator):
     '''
     def __init__(self, ast_rep: ast.AST, input_sequence_type: Type,
                  iterator: term_info,
-                 function: term_info):
+                 function: term_info,
+                 qvt: QueryVarTracker):
 
         # Get some object invariants setup right
         assert function.type == bool, f'Where function ({function.term}) must be type <bool>, not <{function.type.__name__}>'
 
         statement_base_iterator.__init__(self, ast_rep, input_sequence_type,
                                          input_sequence_type, iterator,
-                                         function, True)
+                                         function, True, qvt)
 
         # Does this belong here or in the select statement?
         for t in self._func.monad_refs:
@@ -405,7 +409,7 @@ class statement_where(statement_base_iterator):
 
     def clone_with_types(self, type_input: Type, type_output: Type) -> statement_base_iterator:
         return statement_where(self._ast, type_input,
-                               self._iterator, self._func)
+                               self._iterator, self._func, self._qvt)
 
     def apply(self, seq: object) -> ObjectStream:
         assert isinstance(seq, ObjectStream), f'Internal error: {seq}'

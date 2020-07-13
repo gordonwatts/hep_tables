@@ -12,7 +12,7 @@ from hep_tables.hep_table import xaod_table
 
 from .render import _render_expression
 from .statements import statement_base, statement_df
-from .utils import _find_dataframes
+from .utils import QueryVarTracker, _find_dataframes
 
 # This is used only when testing is going on.
 default_col_name = b'col1'
@@ -47,14 +47,15 @@ async def _result_from_source_async(s: ObjectStream,
 
 
 async def _make_local_from_expression_async(expression: ast.AST,
-                                            context: render_context) -> Any:
+                                            context: render_context,
+                                            qvt: QueryVarTracker) -> Any:
     # Find the dataframe on which this is all based.
     base_ast_df = _find_dataframes(expression)
     base_statement: statement_base = statement_df(base_ast_df)
     assert isinstance(base_ast_df.dataframe, xaod_table)
 
     # Next the render
-    statements, term = _render_expression(base_statement, expression, context, None)
+    statements, term = _render_expression(base_statement, expression, context, None, qvt)
     assert term.term == 'main_sequence'
 
     # Render the expressions to a LINQ expression.
@@ -92,7 +93,7 @@ async def make_local_async(df: Union[DataFrame, Column]) -> Any:  # type: ignore
     lg = logging.getLogger(__name__)
     lg.debug(f'make_local expression: {ast.dump(expression)}')
 
-    return await _make_local_from_expression_async(expression, context)
+    return await _make_local_from_expression_async(expression, context, QueryVarTracker())
 
 
 make_local = make_sync(make_local_async)
