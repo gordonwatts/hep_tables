@@ -47,7 +47,7 @@ def test_copy_xaod_table_1(servicex_ds):
     x1 = xaod_table(f)
     import copy
     x2 = copy.deepcopy(x1)
-    assert x1 is not x2
+    assert x1 is x2
     assert isinstance(x1, xaod_table)
 
 
