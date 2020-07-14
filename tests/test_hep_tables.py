@@ -21,6 +21,27 @@ def test_create_base(servicex_ds):
     _ = xaod_table(f)
 
 
+def test_create_multibase(servicex_ds):
+    f1 = ServiceXDatasetSource(servicex_ds)
+    f2 = ServiceXDatasetSource(servicex_ds)
+    _ = xaod_table(f1, f2)
+
+
+def test_create_bad_empty():
+    with pytest.raises(Exception):
+        xaod_table()
+
+
+def test_create_bad_option():
+    with pytest.raises(Exception):
+        xaod_table("hi there")
+
+
+def test_create_bad_multi_option():
+    with pytest.raises(Exception):
+        xaod_table(["hi there", "dude"])
+
+
 def test_copy_xaod_table_1(servicex_ds):
     f = ServiceXDatasetSource(servicex_ds)
     x1 = xaod_table(f)
@@ -48,6 +69,22 @@ def test_collect_pts(servicex_ds):
     assert len(a) == 283458
     selection = extract_selection(servicex_ds)
     txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(selection) == txt
+
+
+def test_collect_pts_2_files(servicex_ds):
+    f1 = ServiceXDatasetSource(servicex_ds)
+    f2 = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f1, f2)
+    seq = df.jets.pt
+    a = make_local(seq)
+    assert a is not None
+    assert len(a) == 2 * 283458
+    selection = extract_selection(servicex_ds)
+    txt = translate_linq(f1
                          .Select("lambda e1: e1.jets()")
                          .Select("lambda e3: e3.Select(lambda e2: e2.pt())")
                          .AsROOTTTree("file.root", "treeme", ['col1']))

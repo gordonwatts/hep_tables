@@ -10,7 +10,6 @@ from servicex import ServiceXDataset
 import pytest
 
 import hep_tables.local as hep_local
-from hep_tables.utils import reset_new_var_counter
 from dataframe_expressions.alias import _reset_alias_catalog
 from servicex import clean_linq
 import asyncmock
@@ -60,8 +59,6 @@ def delete_default_downloaded_files():
 
 @pytest.fixture(autouse=True)
 def reset_var_counter():
-    # Always start from zero
-    reset_new_var_counter()
     # This is the col name in our dummy data
     hep_local.default_col_name = b'JetPt'
 
@@ -69,8 +66,6 @@ def reset_var_counter():
     _reset_alias_catalog()
     yield None
 
-    # For good measure
-    reset_new_var_counter()
     _reset_alias_catalog()
 
 

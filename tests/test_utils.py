@@ -1,15 +1,16 @@
 import ast
-from typing import List, Dict
+from typing import Dict, List
 
+import pytest
 from dataframe_expressions import ast_DataFrame
 from dataframe_expressions.render import render
 from func_adl_xAOD import ServiceXDatasetSource
-import pytest
 
 from hep_tables import xaod_table
-from hep_tables.utils import (
-    _find_dataframes, _find_root_expr, _index_text_tuple, _is_list,
-    _parse_elements, _unwrap_list, _type_replace, _is_of_type, _count_list)
+from hep_tables.utils import (QueryVarTracker, _count_list, _find_dataframes,
+                              _find_root_expr, _index_text_tuple, _is_list,
+                              _is_of_type, _parse_elements, _type_replace,
+                              _unwrap_list)
 
 
 def test_find_dataframes(servicex_ds):
@@ -237,3 +238,17 @@ def test_count_list_one():
 
 def test_count_list_two():
     assert _count_list(List[List[int]]) == 2
+
+
+def test_new_var_unique():
+    q = QueryVarTracker()
+    v1 = q.new_var_name()
+    v2 = q.new_var_name()
+    assert v1 != v2
+
+
+def test_new_var_type():
+    q = QueryVarTracker()
+    v1 = q.new_term(type(int))
+
+    assert v1.type == type(int)

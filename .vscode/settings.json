@@ -15,6 +15,7 @@
         "backends",
         "binop",
         "codecov",
+        "dataframe",
         "dcache",
         "desy",
         "eles",
@@ -36,6 +37,7 @@
         "pnfs",
         "ptgev",
         "ptgood",
+        "pylance",
         "pytest",
         "qastle",
         "reco",
@@ -44,6 +46,10 @@
         "setuptools",
         "treeme",
         "unittests",
-        "xaod"
+        "xaod",
+        "xrootd"
+    ],
+    "python.testing.pytestArgs": [
+        "--no-cov"
     ],
 }

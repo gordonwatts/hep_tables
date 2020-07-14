@@ -21,30 +21,23 @@ def _find_dataframes(a: ast.AST) -> ast_DataFrame:
     return scanner.found_frames[0]
 
 
-# Counter to help keep variable names unique.
-_var_name_counter = 1
+class QueryVarTracker:
+    def __init__(self):
+        self._var_name_counter = 1
 
+    def new_var_name(self):
+        '''
+        Returns the string for a new variable name. Each one is unique.
+        '''
+        assert self._var_name_counter < 10000
+        v = f'e{self._var_name_counter:04}'
+        self._var_name_counter += 1
+        return v
 
-def reset_new_var_counter():
-    global _var_name_counter
-    _var_name_counter = 1
-
-
-def new_var_name():
-    '''
-    Returns the string for a new variable name. Each one is unique.
-    '''
-    global _var_name_counter
-    assert _var_name_counter < 10000
-    v = f'e{_var_name_counter:04}'
-    _var_name_counter = _var_name_counter + 1
-    return v
-
-
-def new_term(t: Type):
-    'Return a new term of type t with a random name'
-    from .render import term_info
-    return term_info(new_var_name(), t)
+    def new_term(self, t: Type):
+        'Return a new term of type t with a random name'
+        from .render import term_info
+        return term_info(self.new_var_name(), t)
 
 
 def to_ast(o: object) -> ast.AST:
