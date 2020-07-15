@@ -118,7 +118,9 @@ def _render_callable(a: ast.AST, callable: ast_Callable, context: render_context
     root_expr = _find_root_expr(expr, tracker.sequence._ast)
     if root_expr is tracker.sequence._ast:
         # Just continuing on with the sequence already in place.
-        assert _is_list(tracker.sequence.result_type)
+        assert _is_list(tracker.sequence.result_type), \
+            f'Expecting sequence, but got {ast.dump(tracker.sequence._ast)} ' \
+            f'which is not of type list, but of type {tracker.sequence.result_type}.'
         # or isinstance(tracker.sequence, statement_unwrap_list)
         # if _is_list(tracker.sequence.result_type):
         #     s, t = _render_expression(
