@@ -49,4 +49,7 @@
         "xaod",
         "xrootd"
     ],
+    "python.testing.pytestArgs": [
+        "--no-cov"
+    ],
 }
