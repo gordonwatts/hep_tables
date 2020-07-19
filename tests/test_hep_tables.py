@@ -625,6 +625,20 @@ def test_first_at_leaf_level(servicex_ds):
     assert clean_linq(selection) == txt
 
 
+def test_function_call_on_objects(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    seq = df.jets.getAttribute('EMF')
+    make_local(seq)
+    selection = extract_selection(servicex_ds)
+    txt = translate_linq(
+        f
+        .Select("lambda e5: e5.jets()")
+        .Select("lambda e7: e7.Select(lambda e4: e4.getAttribute('EMF'))")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(selection) == txt
+
+
 def test_make_local_twice(servicex_ds):
     f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f)
