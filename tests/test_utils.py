@@ -2,8 +2,7 @@ import ast
 from typing import Dict, List
 
 import pytest
-from dataframe_expressions import ast_DataFrame
-from dataframe_expressions.render import render
+from dataframe_expressions import ast_DataFrame, render
 from func_adl_xAOD import ServiceXDatasetSource
 
 from hep_tables import xaod_table
