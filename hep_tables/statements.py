@@ -138,6 +138,11 @@ class term_info:
         self.monad_refs = monad_refs
 
     def __str__(self):
+        '''Returns a string representation.
+
+        Returns:
+            str: Type of the object
+        '''
         return f'{self.term}: {self.type}'.replace("typing.", "")
 
     def __repr__(self):
