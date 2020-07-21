@@ -89,6 +89,12 @@ def test_monad_reference_prev_of_monad_with_monad():
     assert m.render('(e1,e2)', '<monad-ref>[1].jets()') == 'e2.jets()'
 
 
+def test_term_info_str():
+    m = term_info('d', int)
+    assert str(m) == "d: <class 'int'>"
+    assert repr(m) == "d: <class 'int'>"
+
+
 def test_base_iterator_obj_to_obj():
     a = ast.Num(n=10)
     s = statement_base_iterator(a, object, object,
