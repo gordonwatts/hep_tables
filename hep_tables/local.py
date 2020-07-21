@@ -3,9 +3,8 @@ import asyncio
 import logging
 from typing import Any, List, Union
 
-from dataframe_expressions import Column, DataFrame, render
-from dataframe_expressions.render import render_context
-from func_adl.ObjectStream import ObjectStream
+from dataframe_expressions import Column, DataFrame, render, render_context
+from func_adl import ObjectStream
 from make_it_sync import make_sync
 
 from hep_tables.hep_table import xaod_table
