@@ -27,7 +27,8 @@ def test_numpy_functions_2arg(apply_f, func_text, servicex_ds):
     selection = extract_selection(servicex_ds)
     txt = translate_linq(
         f
-        .Select(f"lambda e1: {func_text}(e1.met(), e1.met())")
+        .Select("lambda e1: e1.met()")
+        .Select(f"lambda e1: {func_text}(e1, e1)")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(selection) == txt
 
@@ -68,6 +69,7 @@ def test_numpy_functions(apply_f, func_text, servicex_ds):
     selection = extract_selection(servicex_ds)
     txt = translate_linq(
         f
-        .Select(f"lambda e1: {func_text}(e1.met())")
+        .Select("lambda e1: e1.met()")
+        .Select(f"lambda e1: {func_text}(e1)")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(selection) == txt

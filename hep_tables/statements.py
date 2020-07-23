@@ -360,8 +360,35 @@ class statement_select(statement_base_iterator):
     def __init__(self, ast_rep: ast.AST, input_sequence_type: Type,
                  result_sequence_type, iterator: term_info,
                  function: term_info, qvt: QueryVarTracker):
-        '''
-        Creates a select statement.
+        '''Create a select statement that will use `function` to transform the
+        input sequence of type `input_sequence_type` to `result_sequence_type`. It
+        will properly nest the `Select` method calls as needed to access the
+        proper type, based on the `input_sequence_type` and the `iterator` type.
+
+        Arguments:
+
+            ast_rep (ast.AST): The AST that this `Select` statement represents
+
+            input_sequence_type (Type): The type of the sequence to be transformed. For
+                                        example, `List[object]`
+
+            result_sequence_type ([type]): The type of the sequence after transformation, for
+                                           example, 'List[float]`
+
+            iterator (term_info): What the function can iterate over, and the variable name
+                                           to use. For example, its type might be `float` and
+                                           `e22`
+
+            function (term_info): The function, including its return type, for example, `sin(e22)`
+                                  and `float`
+
+            qvt (QueryVarTracker): Tracker to keep up with variable names that need to be created.
+
+        Notes:
+
+            In the above example, a statement that looked like `Select(e1: e1.Select(e22: sin(e22))`
+            would be generated. Note the `iterator` type `float` is nested inside the
+            `input_sequence_type`.
         '''
         statement_base_iterator.__init__(self, ast_rep, input_sequence_type,
                                          result_sequence_type, iterator,

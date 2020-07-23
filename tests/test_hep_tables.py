@@ -144,7 +144,8 @@ def test_abs_of_top_leveldata(servicex_ds):
     assert a is not None
     selection = extract_selection(servicex_ds)
     txt = translate_linq(f
-                         .Select("lambda e1: abs(e1.met())")
+                         .Select("lambda e1: e1.met()")
+                         .Select("lambda e2: abs(e2)")
                          .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(selection) == txt
 

@@ -312,7 +312,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
 
         # Now we need to "select" a level here. This means doing a call.
         name = a.attr
-        self.append_call(a, name, None)
+        self.append_method_call(a, name, None)
 
     def visit_call_map(self, value: ast.AST, args: List[ast.AST],
                        keywords: List[ast.keyword], a: ast.Call):
@@ -342,45 +342,66 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                                                       arg, self.context, self)
                                  for arg in a.args]
                 name = a.func.attr
-                self.append_call(a, name, [r.term for r in resolved_args])
+                self.append_method_call(a, name, [r.term for r in resolved_args])
 
         elif isinstance(a.func, ast_FunctionPlaceholder):
             # We will embed this in a select statement. And the sequence items will
             # need to be explicitly referenced in the arguments.
 
-            def do_resolve(arg):
-                return _resolve_expr_inline(self.sequence, arg, self.context, self)
-
             func = cast(ast_FunctionPlaceholder, a.func)
             name = func.callable.__name__
+
             func_return_type = inspect.signature(func.callable).return_annotation
             if func_return_type is inspect.Signature.empty:
                 raise Exception(f"User Error: Function {name} needs return type python hints.")
 
-            var_name = self.qvt.new_term(_unwrap_if_possible(self.sequence.result_type))
-            return_seq_type = _type_replace(self.sequence.result_type, var_name.type,
-                                            func_return_type)
+            self.function_call(name, func_return_type, a.args, a)  # type: ignore
 
-            with self.substitute_ast(self.sequence._ast,
-                                     _ast_VarRef(var_name)):
-                resolved_args = [do_resolve(arg) for arg in a.args]
+        elif isinstance(a.func, ast.Name):
+            name = a.func.id
+            if name in _known_simple_math_functions:
+                name = _known_simple_math_functions[name]
+                return_type = float
+            else:
+                _, return_type = _type_system(name)
 
-            for t in resolved_args:
-                # We can't deal with arrays as arguments yet.
-                assert not _is_list(t.type), \
-                    f'Functions with array arguments are not supported ({name}) [{t.term}]'
-            args = ', '.join(t.term for t in resolved_args)
-            monad_refs = set([item for sublist in resolved_args for item in sublist.monad_refs])
+            # Short cut - assume argument 1 is the sequence.
+            # TODO: #33 something that will figure out how to do two arguments or more
+            if len(a.args) > 0:
+                _render_expresion_as_transform(self, self.context, a.args[0])
 
-            st = statement_select(a, self.sequence.result_type, return_seq_type, var_name,
-                                  term_info(f'{name}({args})', func_return_type, list(monad_refs)),
-                                  self.qvt)
-            self.statements.append(st)
-            self.sequence = st
+            self.function_call(name, return_type, a.args, a)  # type: ignore
+
         else:
             assert False, 'Function calls can only be method calls or place holders'
 
-    def append_call(self, a: ast.AST, name_of_method: str, args: Optional[List[str]]) -> None:
+    def function_call(self, name: str, func_return_type: Type, args: List[ast.AST], node: ast.AST):
+        var_name = self.qvt.new_term(_unwrap_if_possible(self.sequence.result_type))
+        return_seq_type = _type_replace(self.sequence.result_type, var_name.type,
+                                        func_return_type)
+
+        def do_resolve(arg):
+            return _resolve_expr_inline(self.sequence, arg, self.context, self)
+
+        with self.substitute_ast(self.sequence._ast,
+                                 _ast_VarRef(var_name)):
+            resolved_args = [do_resolve(arg) for arg in args]
+
+        for t in resolved_args:
+            # We can't deal with arrays as arguments yet.
+            assert not _is_list(t.type), \
+                f'Functions with array arguments are not supported ({name}) [{t.term}]'
+        s_args = ', '.join(t.term for t in resolved_args)
+        monad_refs = set([item for sublist in resolved_args for item in sublist.monad_refs])
+
+        st = statement_select(node, self.sequence.result_type, return_seq_type, var_name,
+                              term_info(f'{name}({s_args})', func_return_type, list(monad_refs)),
+                              self.qvt)
+        self.statements.append(st)
+        self.sequence = st
+
+    def append_method_call(self, a: ast.AST, name_of_method: str,
+                           args: Optional[List[str]]) -> None:
         'Append a call onto the call chain that will look at this method'
         # Figure out the type information of this function call.
 
@@ -597,33 +618,7 @@ def _render_expression(current_sequence: statement_base, a: ast.AST,
             '''
             Deal with math functions.
             '''
-            assert isinstance(a.func, (ast.Attribute, ast_FunctionPlaceholder, ast_Callable))
-
-            if isinstance(a.func, ast.Attribute):
-                if a.func.attr not in _known_simple_math_functions:
-                    self.process_with_mapper(a)
-                else:
-                    assert len(a.args) == 0
-
-                    self.visit(a.func.value)
-                    v = self.term_stack.pop()
-
-                    if v.term != 'main_sequence':
-                        self.term_stack.append(
-                            term_info(f'{_known_simple_math_functions[a.func.attr]}({v.term})',
-                                      v.type, v.monad_refs))
-                    else:
-                        var_name = self.qvt.new_term(float)
-                        expr = f'({_known_simple_math_functions[a.func.attr]}({var_name.term}))'
-                        # An exception will be thrown here if the input sequence isn't float.
-                        self.statements.append(
-                            statement_select(a, self.sequence.result_type,
-                                             self.sequence.result_type,
-                                             var_name, term_info(expr, float),
-                                             self.qvt))
-                        self.term_stack.append(term_info('main_sequence',
-                                                         self.sequence.result_type))
-            elif isinstance(a.func, ast_Callable):
+            if isinstance(a.func, ast_Callable):
                 assert len(a.args) == 1, "internal error - expect one arg for top level lambda"
 
                 # Render the sequence that gets us to what we want to map over.
@@ -784,7 +779,6 @@ _known_simple_math_functions = {
     'log2': 'log2',
     'power': 'pow',
     'sqrt': 'sqrt',
-    # numpy functions
     'cbrt': 'cbrt',
     'ceil': 'ceil',
     'floor': 'floor',
