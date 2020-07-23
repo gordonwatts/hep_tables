@@ -66,10 +66,12 @@ def _find_root_expr(expr: ast.AST, possible_root: ast.AST) -> Optional[ast.AST]:
     it will be an `ast_DataFrame` - return whichever one it is.
 
     Arguments:
+
         expr            Expression to find a root
         possible_root   Root
 
     Result:
+
         expr            First hit in the standard ast.NodeVisitor algorithm that is
                         either the a object or an instance of type `ast_DataFrame`.
 
