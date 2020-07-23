@@ -186,15 +186,11 @@ class _statement_tracker:
         self.base_sequence = start_sequence
         self.ast_replacements: List[Tuple[ast.AST, ast.AST]] = []
 
-        self._query_var_tracker = None
-        if var_tracker is not None:
-            self._query_var_tracker = var_tracker
-        elif parent is not None and parent.qvt is not None:
-            self._query_var_tracker = parent.qvt
-        assert self._query_var_tracker is not None
+        self._query_var_tracker = var_tracker if var_tracker is not None \
+            else parent.qvt
 
     @property
-    def qvt(self):
+    def qvt(self) -> QueryVarTracker:
         'Return a query variable tracker'
         return self._query_var_tracker
 
@@ -765,8 +761,41 @@ def _type_system(n: str) -> Tuple[Type, Type]:
 
 # List of math functions we translate into something similar in the LINQ code.
 _known_simple_math_functions = {
-    'abs': 'abs',
+    'sin': 'sin',
+    'cos': 'cos',
+    'tan': 'tan',
+    'arcsin': 'asin',
+    'arccos': 'acos',
+    'arctan': 'atan',
+    'arctan2': 'atan2',
+    'sinh': 'sinh',
+    'cosh': 'cosh',
+    'tanh': 'tanh',
+    'arcsinh': 'asinh',
+    'arccosh': 'acosh',
+    'arctanh': 'atanh',
+    'arctanh': 'atanh',
+    'exp': 'exp',
+    'ldexp': 'ldexp',
+    'log': 'log',
+    'log10': 'log10',
+    'exp2': 'exp2',
+    'log1p': 'log1p',
+    'log2': 'log2',
+    'power': 'pow',
     'sqrt': 'sqrt',
     # numpy functions
+    'cbrt': 'cbrt',
+    'ceil': 'ceil',
+    'floor': 'floor',
+    'fmod': 'fmod',
+    'trunc': 'trunc',
+    'round_': 'round',
+    'rint': 'rint',
+    'fmax': 'fmax',
+    'fmin': 'fmin',
     'absolute': 'abs',
+    'nextafter': 'nextafter',
+    # Builtin functions
+    'abs': 'abs',
 }
