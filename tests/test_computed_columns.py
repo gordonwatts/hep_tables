@@ -1,14 +1,10 @@
-from hep_tables import make_local, xaod_table
 from dataframe_expressions import define_alias
-
 from func_adl_xAOD import ServiceXDatasetSource
-
 from servicex import clean_linq
 
-from .conftest import (
-    translate_linq,
-    extract_selection
-    )
+from hep_tables import make_local, xaod_table
+
+from .conftest import extract_selection, translate_linq
 
 
 def test_simple_column_named_in_second_place(servicex_ds):
@@ -92,3 +88,35 @@ def test_make_local_bad(servicex_ds):
     json_2 = clean_linq(extract_selection(servicex_ds))
 
     assert json_1 == json_2
+
+
+def test_simple_column_as_constant(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    jets = df.jets
+    jets['ptgev'] = lambda j: 1000.0
+    seq = df.jets.ptgev
+    make_local(seq)
+
+    selection = extract_selection(servicex_ds)
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e4: e4.Select(lambda e2: 1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(selection) == txt
+
+
+def test_simple_column_as_constant_func(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    jets = df.jets
+    jets['ptgev'] = lambda j: abs(-1000.0)
+    seq = df.jets.ptgev
+    make_local(seq)
+
+    selection = extract_selection(servicex_ds)
+    txt = translate_linq(f
+                         .Select("lambda e1: e1.jets()")
+                         .Select("lambda e4: e4.Select(lambda e2: 1000.0)")
+                         .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(selection) == txt
