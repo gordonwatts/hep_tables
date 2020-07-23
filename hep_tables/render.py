@@ -358,22 +358,36 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
             self.function_call(name, func_return_type, a.args, a)  # type: ignore
 
         elif isinstance(a.func, ast.Name):
-            name = a.func.id
-            if name in _known_simple_math_functions:
-                name = _known_simple_math_functions[name]
-                return_type = float
+            atr = getattr(self, f'visit_call_{a.func.id}', None)
+            if atr is not None:
+                atr(a)
             else:
-                _, return_type = _type_system(name)
+                name = a.func.id
+                if name in _known_simple_math_functions:
+                    name = _known_simple_math_functions[name]
+                    return_type = float
+                else:
+                    _, return_type = _type_system(name)
 
-            # Short cut - assume argument 1 is the sequence.
-            # TODO: #33 something that will figure out how to do two arguments or more
-            if len(a.args) > 0:
-                _render_expresion_as_transform(self, self.context, a.args[0])
+                # Short cut - assume argument 1 is the sequence.
+                # TODO: #33 something that will figure out how to do two arguments or more
+                if len(a.args) > 0:
+                    _render_expresion_as_transform(self, self.context, a.args[0])
 
-            self.function_call(name, return_type, a.args, a)  # type: ignore
+                self.function_call(name, return_type, a.args, a)  # type: ignore
 
         else:
             assert False, 'Function calls can only be method calls or place holders'
+
+    def visit_call_np_where(self, a: ast.Call):
+        '''A where call is actually an IfExpr expression - so we will build that and
+        parse it.
+
+        Args:
+            a (ast.Call): The `ast.Call` node containing the `np_where` call.
+        '''
+        
+        raise NotImplementedError()
 
     def function_call(self, name: str, func_return_type: Type, args: List[ast.AST], node: ast.AST):
         var_name = self.qvt.new_term(_unwrap_if_possible(self.sequence.result_type))

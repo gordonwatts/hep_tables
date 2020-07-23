@@ -29,6 +29,7 @@
         "fmin",
         "fmod",
         "fname",
+        "ifexp",
         "index'th",
         "isabstractmethod",
         "jupyter",

@@ -680,6 +680,77 @@ def test_make_local_twice_filter(servicex_ds):
     assert json_1 == json_2
 
 
+def test_ifexp_one_seq(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    from numpy import where
+    seq = where(df.x != 0, 1.0 / df.x, 0.0)
+
+    make_local(seq)
+    json = clean_linq(extract_selection(servicex_ds))
+
+    txt = translate_linq(
+        f
+        .Select("lambda e5: e5.x")
+        .Select("lambda e7: 1.0 / e7 if e7 != 0 else 0.0")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+
+    assert clean_linq(json) == txt
+
+
+def test_ifexp_two_const(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    from numpy import where
+    seq = where(df.x != 0, -1.0, 1.0)
+
+    make_local(seq)
+    json = clean_linq(extract_selection(servicex_ds))
+
+    txt = translate_linq(
+        f
+        .Select("lambda e5: e5.x")
+        .Select("lambda e7: -1.0 / e7 if e7 != 0 else 1.0")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+
+    assert clean_linq(json) == txt
+
+
+def test_ifexp_jets_one_seq(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    from numpy import where
+    seq = where(df.jets.x != 0, 1.0 / df.jets.x, 0.0)
+
+    make_local(seq)
+    json = clean_linq(extract_selection(servicex_ds))
+
+    txt = translate_linq(
+        f
+        .Select("lambda e5: e5.x")
+        .Select("lambda e1: e1.Select(lambda e7: 1.0 / e7 if e7 != 0 else 0.0")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+
+    assert clean_linq(json) == txt
+
+
+def test_ifexp_jets_two_const(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    from numpy import where
+    seq = where(df.jets.x != 0, -1.0, 1.0)
+
+    make_local(seq)
+    json = clean_linq(extract_selection(servicex_ds))
+
+    txt = translate_linq(
+        f
+        .Select("lambda e5: e5.x")
+        .Select("lambda e7: e7.Select(lambda e8: -1.0 / e8.x if e7 != 0 else 1.0")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+
+    assert clean_linq(json) == txt
+
 # def test_count_in_nested_filter(servicex_ds):
 #     df = xaod_table(f)
 #     seq1 = df.jets[df.jets.pt > 20000.0]
