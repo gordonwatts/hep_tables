@@ -12,7 +12,7 @@ from dataframe_expressions import (ast_Callable, ast_DataFrame, ast_Filter,
 from .statements import (_monad_manager, statement_base, statement_select,
                          statement_where, term_info)
 from .utils import (QueryVarTracker, _find_root_expr, _is_list, _type_replace,
-                    _unwrap_if_possible, _unwrap_list)
+                    _unwrap_if_possible, _unwrap_list, find_common_sub_expressions)
 
 
 class RenderException(Exception):
@@ -372,7 +372,10 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
                 # Short cut - assume argument 1 is the sequence.
                 # TODO: #33 something that will figure out how to do two arguments or more
                 if len(a.args) > 0:
-                    _render_expresion_as_transform(self, self.context, a.args[0])
+                    common_term = find_common_sub_expressions(a.args)
+                    if common_term is None:
+                        raise RenderException(f'Unable to code arguments to "{name}" - no common root in arguments!')
+                    _render_expresion_as_transform(self, self.context, common_term)
 
                 self.function_call(name, return_type, a.args, a)  # type: ignore
 

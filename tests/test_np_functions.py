@@ -73,3 +73,22 @@ def test_numpy_functions(apply_f, func_text, servicex_ds):
         .Select(f"lambda e1: {func_text}(e1)")
         .AsROOTTTree("file.root", "treeme", ['col1']))
     assert clean_linq(selection) == txt
+
+
+def test_numpy_2arg_func(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+
+    df_1 = df.jets.pt
+    df_2 = df.jets.eta
+
+    seq = np.arctan2(df_1, df_2)  # type: ignore
+    make_local(seq)
+
+    selection = extract_selection(servicex_ds)
+    txt = translate_linq(
+        f
+        .Select("lambda e1: e1.jets()")
+        .Select("lambda e1: e1.Select(lambda e2: atan2(e2.pt(), e2.eta()))")
+        .AsROOTTTree("file.root", "treeme", ['col1']))
+    assert clean_linq(selection) == txt
