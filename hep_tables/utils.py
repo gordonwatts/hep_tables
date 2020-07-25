@@ -1,5 +1,7 @@
 import ast
-from typing import Dict, List, Optional, Tuple, Type
+from hep_tables.hep_table import xaod_table
+from typing import Any, Dict, List, Optional, Tuple, Type
+from collections import namedtuple
 
 from dataframe_expressions import ast_DataFrame
 
@@ -229,3 +231,76 @@ def _count_list(t: Type) -> int:
         return 0
 
     return 1 + _count_list(t.__args__[0])
+
+
+def _list_asts(a: ast.AST) -> List[ast.AST]:
+    '''Returns a list of ast's for a list as long as the bottom of the
+    chain ends in an xaod_table.
+
+    Args:
+
+        a (ast.AST): The ast tree we should be looking at
+
+    Returns:
+
+        The list of the ast's in this chain, flattend, and "in order".
+        It will return None if no xaod_table is found
+
+    '''
+    DepthInfo = namedtuple('DepthInfo', 'a depth')
+    final_list: List[DepthInfo] = []
+    seen_xaod_table = False
+
+    class scanner(ast.NodeVisitor):
+        def __init__(self):
+            super().__init__()
+            self.depth = 0
+
+        def generic_visit(self, node: ast.AST) -> Any:
+            final_list.append(DepthInfo(node, self.depth))
+            self.depth += 1
+            super().generic_visit(node)
+            self.depth -= 1
+
+        def visit_ast_DataFrame(self, node: ast_DataFrame):
+            if isinstance(node.dataframe, xaod_table):
+                nonlocal seen_xaod_table
+                seen_xaod_table = True
+            self.generic_visit(node)
+
+    scanner().visit(a)
+    sorted_list = sorted(final_list, key=lambda d: d.depth)
+    return [f.a for f in sorted_list] if seen_xaod_table else []
+
+
+def find_common_sub_expressions(exprs: List[ast.AST]) -> Optional[ast.AST]:
+    '''Returns the common sub-expressions from the list of `exprs`.
+
+    - Any literal only expressions are ignored (e.g. 1+1)
+
+    Args:
+
+        exprs (List[ast.AST]): List of `ast.AST`'s in which to find
+        the common items.
+
+    Returns:
+
+        None if there is no common expression or nothing based off an `xaod_table`.
+    '''
+    if len(exprs) == 0:
+        return None
+
+    # All expressions that end in an xaod_table
+    all_ast_lists = [_list_asts(expr) for expr in exprs]
+    good_set_lists = [s for s in all_ast_lists if len(s) > 0]
+    if len(good_set_lists) == 0:
+        return None
+
+    # Find what AST's are in common here
+    common = set.intersection(*[set(s) for s in good_set_lists])
+    if len(common) == 0:
+        return None
+
+    # Find which is the most important ast
+    indices = [good_set_lists[0].index(c) for c in common]
+    return good_set_lists[0][min(indices)]

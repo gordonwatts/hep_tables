@@ -9,7 +9,7 @@ from hep_tables import xaod_table
 from hep_tables.utils import (QueryVarTracker, _count_list, _find_dataframes,
                               _find_root_expr, _index_text_tuple, _is_list,
                               _is_of_type, _parse_elements, _type_replace,
-                              _unwrap_list)
+                              _unwrap_list, find_common_sub_expressions)
 
 
 def test_find_dataframes(servicex_ds):
@@ -251,3 +251,94 @@ def test_new_var_type():
     v1 = q.new_term(type(int))
 
     assert v1.type == type(int)
+
+
+def test_common_no_asts():
+    assert find_common_sub_expressions([]) is None
+
+
+def test_common_literal():
+    a = ast.parse('1+1').body[0].value  # type: ignore
+    assert find_common_sub_expressions([a]) is None
+
+
+def test_common_single_xaod(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    expr, _ = render(df.jets.pt)
+    assert find_common_sub_expressions([expr]) is expr
+
+
+def test_common_single_xaod_and_literal(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    expr1, _ = render(df.jets.pt)
+
+    expr2 = ast.parse('1+1').body[0].value  # type: ignore
+
+    assert find_common_sub_expressions([expr1, expr2]) is expr1
+
+
+def test_common_single_xaod_and_common(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    expr1, render_context = render(df.jets.pt)
+
+    expr2, _ = render(df.jets.eta, render_context)
+
+    common_expr = find_common_sub_expressions([expr1, expr2])
+
+    assert isinstance(expr1, ast.Attribute)
+    assert common_expr is expr1.value
+
+    assert isinstance(expr2, ast.Attribute)
+    assert common_expr is expr2.value
+
+
+def test_common_single_xaod_and_identical(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    expr1, render_context = render(df.jets.pt)
+
+    expr2, _ = render(df.jets.pt, render_context)
+
+    common_expr = find_common_sub_expressions([expr1, expr2])
+
+    assert common_expr is expr1
+
+
+def test_common_single_xaod_depth_and_common(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    expr1, render_context = render(df.jets.pt)
+
+    expr2, _ = render(df.jets.eta / 2.0, render_context)
+
+    common_expr = find_common_sub_expressions([expr1, expr2])
+
+    assert isinstance(expr1, ast.Attribute)
+    assert common_expr is expr1.value
+
+
+def test_common_single_xaod_rdepth_and_common(servicex_ds):
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f)
+    expr1, render_context = render(df.jets.pt)
+
+    expr2, _ = render(df.jets.eta / 2.0, render_context)
+
+    common_expr = find_common_sub_expressions([expr2, expr1])
+
+    assert isinstance(expr1, ast.Attribute)
+    assert common_expr is expr1.value
+
+
+def test_common_single_2xaod(servicex_ds):
+    f1 = ServiceXDatasetSource(servicex_ds)
+    df1 = xaod_table(f1)
+    expr1, _ = render(df1.jets.pt)
+
+    f2 = ServiceXDatasetSource(servicex_ds)
+    df2 = xaod_table(f2)
+    expr2, _ = render(df2.jets.pt)
+    assert find_common_sub_expressions([expr1, expr2]) is None

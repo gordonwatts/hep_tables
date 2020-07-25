@@ -386,7 +386,7 @@ class _map_to_data(_statement_tracker, ast.NodeVisitor):
         Args:
             a (ast.Call): The `ast.Call` node containing the `np_where` call.
         '''
-        
+
         raise NotImplementedError()
 
     def function_call(self, name: str, func_return_type: Type, args: List[ast.AST], node: ast.AST):
