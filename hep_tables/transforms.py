@@ -23,7 +23,7 @@ class sequence_predicate_base(ABC):
 
     @abstractmethod
     def sequence(self, sequence: ObjectStream,
-                 seq_dict: Dict[ast.AST, ast.AST]) -> Dict[ast.AST, ast.AST]:
+                 seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
         '''Apply the operation to the sequence `sequence`
 
         Args:
@@ -49,7 +49,8 @@ class sequence_transform(sequence_predicate_base):
     '''
     def __init__(self,
                  dependent_asts: List[ast.AST],
-                 function: ast.AST):
+                 function: ast.AST,
+                 qt: QueryVarTracker):
         '''Transforms a sequence with the lambda implied by the `function` argument.
 
         TODO: Do we care about `dependent_asts`?
@@ -68,17 +69,17 @@ class sequence_transform(sequence_predicate_base):
         '''
         self._function = function
         self._dependent_asts = dependent_asts
+        self._qt = qt
 
         self._called = False
 
     def sequence(self, sequence: ObjectStream,
-                 seq_dict: Dict[ast.AST, ast.AST],
-                 qt: QueryVarTracker) -> ObjectStream:
+                 seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
         '''
         Return a Select statement around the function we are given.
         '''
         # Replace the argument references
-        new_name = qt.new_var_name()
+        new_name = self._qt.new_var_name()
         new_name_ast = ast.Name(id=new_name)
 
         class replace_arg(ast.NodeTransformer):
