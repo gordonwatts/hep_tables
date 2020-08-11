@@ -7,7 +7,7 @@ from func_adl.object_stream import ObjectStream
 
 from igraph import Graph, Vertex  # type: ignore
 
-from hep_tables.transforms import astIteratorPlaceholder, name_seq_argument, sequence_predicate_base, sequence_transform
+from hep_tables.transforms import astIteratorPlaceholder, name_seq_argument, sequence_predicate_base
 
 
 def depth_first_traversal(g: Graph) -> Iterator[Tuple[Vertex]]:

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import ast
 from hep_tables.utils import QueryVarTracker
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
 from func_adl import EventDataset
 from func_adl.object_stream import ObjectStream

@@ -1,7 +1,5 @@
 import ast
 
-import pytest
-from hep_tables.utils import QueryVarTracker
 from typing import List, Optional
 from func_adl.object_stream import ObjectStream
 from hep_tables.transforms import astIteratorPlaceholder, sequence_predicate_base, sequence_transform

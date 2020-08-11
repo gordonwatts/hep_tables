@@ -19,6 +19,7 @@ import asyncmock
 # dump out logs
 logging.basicConfig(level=logging.NOTSET)
 
+
 @pytest.fixture
 def mock_qt(mocker):
     qt = mocker.MagicMock(spec=QueryVarTracker)

@@ -2,9 +2,9 @@ import ast
 
 from func_adl.event_dataset import EventDataset
 from func_adl.object_stream import ObjectStream
-from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_predicate_base, sequence_transform
-from hep_tables.linq_builder import _monad_select_transform, build_linq_expression, depth_first_traversal
-from typing import Any, Dict, List, Match
+from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_transform
+from hep_tables.linq_builder import build_linq_expression, depth_first_traversal
+from typing import Any, Dict, List
 from dataframe_expressions import ast_DataFrame
 from hep_tables import xaod_table
 from igraph import Graph
