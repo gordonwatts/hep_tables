@@ -28,7 +28,10 @@ def depth_first_traversal(g: Graph) -> Iterator[Tuple[Vertex]]:
         yield nodes
         new_nodes = [n.neighbors(mode='in') for n in nodes]
         u = set(n for n_list in new_nodes for n in n_list)
-        nodes = tuple(u)
+        if all('order' in v.attribute_names() for v in u):
+            nodes = tuple(sorted(u, key=lambda v: v['order']))
+        else:
+            nodes = tuple(u)
 
 
 def build_linq_expression(exp_graph: Graph, qt: QueryVarTracker) -> ObjectStream:

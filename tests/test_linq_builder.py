@@ -113,9 +113,9 @@ def test_source_and_single_generator(mocker, mock_qt):
 
 
 class MatchObjectSequence:
-    def __init__(self, a_list: List[ast.AST]):
+    def __init__(self, a_list: ast.AST):
         from func_adl.ast.func_adl_ast_utils import change_extension_functions_to_calls
-        self._asts = [change_extension_functions_to_calls(a) for a in a_list]
+        self._asts = [change_extension_functions_to_calls(a_list)]
 
     def clean(self, a: ast.AST):
         return ast.dump(a) \
@@ -144,14 +144,14 @@ def test_two_source_operator(mocker, mock_qt):
     seq_met = mocker.MagicMock(spec=sequence_transform)
     proper_return2_1 = ObjectStream(ast.Name(id='a')).Select("lambda e1: e1.met")
     seq_met.sequence.return_value = proper_return2_1
-    level_1_1 = g.add_vertex(node=a2_1, seq=seq_met)
+    level_1_1 = g.add_vertex(node=a2_1, seq=seq_met, order=0)
     g.add_edge(level_1_1, level_0, main_seq=True)
 
     a2_2 = ast.Constant(20)
     seq_met_prime = mocker.MagicMock(spec=sequence_transform)
     proper_return2_2 = ObjectStream(ast.Name(id='b')).Select("lambda e1: e1.met_prime")
     seq_met_prime.sequence.return_value = proper_return2_2
-    level_1_2 = g.add_vertex(node=a2_2, seq=seq_met_prime)
+    level_1_2 = g.add_vertex(node=a2_2, seq=seq_met_prime, order=1)
     g.add_edge(level_1_2, level_0, main_seq=True)
 
     a3 = ast.Constant(30)
@@ -167,16 +167,14 @@ def test_two_source_operator(mocker, mock_qt):
 
     root_seq.sequence.assert_called_with(None, {})
 
-    seq_met.sequence.assert_called_with(MatchObjectSequence([ast.Name(id='e1000')]), MatchSeqDict({a1: ast.Name(id='e1000')}))
-    seq_met_prime.sequence.assert_called_with(MatchObjectSequence([ast.Name(id='e1000')]), MatchSeqDict({a1: ast.Name(id='e1000')}))
+    seq_met.sequence.assert_called_with(MatchObjectSequence(ast.Name(id='e1000')), MatchSeqDict({a1: ast.Name(id='e1000')}))
+    seq_met_prime.sequence.assert_called_with(MatchObjectSequence(ast.Name(id='e1000')), MatchSeqDict({a1: ast.Name(id='e1000')}))
 
     two_returns_1 = mine \
         .Select("lambda e1000: (a.Select(lambda e1: e1.met), b.Select(lambda e1: e1.met_prime))")
-    two_returns_2 = mine \
-        .Select("lambda e1000: (b.Select(lambda e1: e1.met_prime), a.Select(lambda e1: e1.met))")
 
     seq_combine.sequence.assert_called_with(
-        MatchObjectSequence([two_returns_1._ast, two_returns_2._ast]),
+        MatchObjectSequence(two_returns_1._ast),
         MatchSeqDict(
             {
                 a2_1: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(0)),
@@ -198,28 +196,28 @@ def test_two_source_twice_operator(mocker, mock_qt):
     seq_met21 = mocker.MagicMock(spec=sequence_transform)
     proper_return2_1 = ObjectStream(ast.Name(id='a')).Select("lambda e1: e1.met21")
     seq_met21.sequence.return_value = proper_return2_1
-    level_2_1 = g.add_vertex(node=a2_1, seq=seq_met21)
+    level_2_1 = g.add_vertex(node=a2_1, seq=seq_met21, order=0)
     g.add_edge(level_2_1, level_0, main_seq=True)
 
     a2_2 = ast.Constant(20)
     seq_met22 = mocker.MagicMock(spec=sequence_transform)
     proper_return2_2 = ObjectStream(ast.Name(id='b')).Select("lambda e1: e1.met22")
     seq_met22.sequence.return_value = proper_return2_2
-    level_2_2 = g.add_vertex(node=a2_2, seq=seq_met22)
+    level_2_2 = g.add_vertex(node=a2_2, seq=seq_met22, order=1)
     g.add_edge(level_2_2, level_0, main_seq=True)
 
     a3_1 = ast.Constant(10)
     seq_met31 = mocker.MagicMock(spec=sequence_transform)
     proper_return3_1 = ObjectStream(ast.Name(id='c')).Select("lambda e1: e1.met31")
     seq_met31.sequence.return_value = proper_return3_1
-    level_3_1 = g.add_vertex(node=a3_1, seq=seq_met31)
+    level_3_1 = g.add_vertex(node=a3_1, seq=seq_met31, order=0)
     g.add_edge(level_3_1, level_2_1, main_seq=True)
 
     a3_2 = ast.Constant(20)
     seq_met32 = mocker.MagicMock(spec=sequence_transform)
     proper_return2_2 = ObjectStream(ast.Name(id='d')).Select("lambda e1: e1.met32")
     seq_met32.sequence.return_value = proper_return2_2
-    level_3_2 = g.add_vertex(node=a3_2, seq=seq_met32)
+    level_3_2 = g.add_vertex(node=a3_2, seq=seq_met32, order=1)
     g.add_edge(level_3_2, level_2_2, main_seq=True)
 
     a4 = ast.Constant(30)
@@ -235,18 +233,13 @@ def test_two_source_twice_operator(mocker, mock_qt):
 
     two_returns_1 = mine \
         .Select("lambda e1000: (a.Select(lambda e1: e1.met21), b.Select(lambda e1: e1.met22))") \
-        .Select("lambda e1000: (d.Select(lambda e1: e1.met32), c.Select(lambda e1: e1.met31))")
-    two_returns_2 = mine \
-        .Select("lambda e1000: (b.Select(lambda e1: e1.met22), a.Select(lambda e1: e1.met21))") \
         .Select("lambda e1000: (c.Select(lambda e1: e1.met31), d.Select(lambda e1: e1.met32))")
 
     seq_combine.sequence.assert_called_with(
-        MatchObjectSequence([two_returns_1._ast, two_returns_2._ast]),
+        MatchObjectSequence(two_returns_1._ast),
         MatchSeqDict(
             {
-                a3_1: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(1)),
-                a3_2: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(0)),
+                a3_1: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(0)),
+                a3_2: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(1)),
             })
     )
-
-    assert r is proper_return4
