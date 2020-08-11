@@ -21,13 +21,6 @@ def test_sequence_predicate_base():
     mtb()
 
 
-@pytest.fixture
-def mock_qt(mocker):
-    qt = mocker.MagicMock(spec=QueryVarTracker)
-    qt.new_var_name.return_value = 'e1000'
-    return qt
-
-
 def test_seq_trans_null(mock_qt):
     sequence_transform([ast.Num(20)], ast.Num(20), mock_qt)
 

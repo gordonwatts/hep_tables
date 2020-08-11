@@ -57,7 +57,7 @@ def mock_root_sequence_transform(mocker):
     return mine, a, root_seq
 
 
-def test_just_the_source(mocker):
+def test_just_the_source(mocker, mock_qt):
     '''Simple single source node. This isn't actually valid LINQ that could be rendered.
     '''
 
@@ -65,7 +65,7 @@ def test_just_the_source(mocker):
     g = Graph(directed=True)
     g.add_vertex(node=a, seq=root_seq)
 
-    r = build_linq_expression(g)
+    r = build_linq_expression(g, mock_qt)
     root_seq.sequence.assert_called_with(None, {})
     assert r is mine
 
@@ -73,10 +73,12 @@ def test_just_the_source(mocker):
 def compare_dict_ast_args(first: Dict[ast.AST, ast.AST],
                           second: Dict[ast.AST, ast.AST]) -> bool:
     if set(first.keys()) != set(second.keys()):
+        print('Number of keys did not match')
         return False
 
     for k in first.keys():
         if ast.dump(first[k]) != ast.dump(second[k]):
+            print(f'Key {ast.dump(k)} did not have matching first={ast.dump(first[k])} second={ast.dump(second[k])}')
             return False
 
     return True
@@ -90,7 +92,7 @@ class MatchSeqDict:
         return compare_dict_ast_args(self.some_obj, other)
 
 
-def test_source_and_single_generator(mocker):
+def test_source_and_single_generator(mocker, mock_qt):
     '''Return a sequence of met stuff'''
     mine, a1, root_seq = mock_root_sequence_transform(mocker)
     g = Graph(directed=True)
@@ -104,27 +106,34 @@ def test_source_and_single_generator(mocker):
 
     g.add_edge(level_1, level_0)
 
-    r = build_linq_expression(g)
+    r = build_linq_expression(g, mock_qt)
 
     assert r is proper_return
-    seq_met.sequence.assert_called_once()
     seq_met.sequence.assert_called_with(mine, MatchSeqDict({a1: astIteratorPlaceholder()}))
 
 
-class MatchMonandTransform:
-    def __init__(self, statements: List[ObjectStream]):
-        self._statements = statements
+class MatchObjectSequence:
+    def __init__(self, a_list: List[ast.AST]):
+        from func_adl.ast.func_adl_ast_utils import change_extension_functions_to_calls
+        self._asts = [change_extension_functions_to_calls(a) for a in a_list]
 
-    def __eq__(self, other):
-        assert isinstance(other, _monad_select_transform)
-        assert len(self._statements) == len(other._tuple_statements)
-        for s1, s2 in zip(self._statements, other._tuple_statements):
-            if s1 is not s2:
-                return False
-        return True
+    def clean(self, a: ast.AST):
+        return ast.dump(a) \
+            .replace(', annotation=None', '') \
+            .replace(', vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]', '') \
+            .replace(', ctx=Load()', '')
+
+    def __eq__(self, other: ObjectStream):
+        other_ast = self.clean(other._ast)
+        r = any(self.clean(a) == other_ast for a in self._asts)
+        if not r:
+            print(f'test: {self.clean(other._ast)}')
+            for a in self._asts:
+                print(f'true: {self.clean(a)}')
+        return r
 
 
-def test_two_source_operator(mocker):
+def test_two_source_operator(mocker, mock_qt):
     '''Return a sequence that creates a tuple of two values'''
 
     mine, a1, root_seq = mock_root_sequence_transform(mocker)
@@ -133,41 +142,46 @@ def test_two_source_operator(mocker):
 
     a2_1 = ast.Constant(10)
     seq_met = mocker.MagicMock(spec=sequence_transform)
-    proper_return2_1 = mine.Select("lambda e1: e1.met")
+    proper_return2_1 = ObjectStream(ast.Name(id='a')).Select("lambda e1: e1.met")
     seq_met.sequence.return_value = proper_return2_1
     level_1_1 = g.add_vertex(node=a2_1, seq=seq_met)
-    g.add_edge(level_1_1, level_0)
+    g.add_edge(level_1_1, level_0, main_seq=True)
 
     a2_2 = ast.Constant(20)
     seq_met_prime = mocker.MagicMock(spec=sequence_transform)
-    proper_return2_2 = mine.Select("lambda e1: e1.met_prime")
+    proper_return2_2 = ObjectStream(ast.Name(id='b')).Select("lambda e1: e1.met_prime")
     seq_met_prime.sequence.return_value = proper_return2_2
     level_1_2 = g.add_vertex(node=a2_2, seq=seq_met_prime)
-    g.add_edge(level_1_2, level_0)
+    g.add_edge(level_1_2, level_0, main_seq=True)
 
     a3 = ast.Constant(30)
     seq_combine = mocker.MagicMock(spec=sequence_transform)
-    proper_return3 = mine.Select("lambda e: e[0] + e[1]")
+    proper_return3 = ObjectStream(ast.Name(id='c')).Select("lambda e: e[0] + e[1]")
     seq_combine.sequence.return_value = proper_return3
     level_2 = g.add_vertex(node=a3, seq=seq_combine)
-    g.add_edge(level_2, level_1_1)
-    g.add_edge(level_2, level_1_2)
+    g.add_edge(level_2, level_1_1, main_seq=True)
+    g.add_edge(level_2, level_1_2, main_seq=False)
 
-    r = build_linq_expression(g)
+    r = build_linq_expression(g, mock_qt)
     assert r is not None
 
     root_seq.sequence.assert_called_with(None, {})
 
-    seq_met.sequence.assert_called_with(mine, MatchSeqDict({a1: astIteratorPlaceholder()}))
-    seq_met_prime.sequence.assert_called_with(mine, MatchSeqDict({a1: astIteratorPlaceholder()}))
+    seq_met.sequence.assert_called_with(MatchObjectSequence([ast.Name(id='e1000')]), MatchSeqDict({a1: ast.Name(id='e1000')}))
+    seq_met_prime.sequence.assert_called_with(MatchObjectSequence([ast.Name(id='e1000')]), MatchSeqDict({a1: ast.Name(id='e1000')}))
+
+    two_returns_1 = mine \
+        .Select("lambda e1000: (a.Select(lambda e1: e1.met), b.Select(lambda e1: e1.met_prime))")
+    two_returns_2 = mine \
+        .Select("lambda e1000: (b.Select(lambda e1: e1.met_prime), a.Select(lambda e1: e1.met))")
 
     seq_combine.sequence.assert_called_with(
-        MatchMonandTransform([proper_return2_1, proper_return2_2]),
+        MatchObjectSequence([two_returns_1._ast, two_returns_2._ast]),
         MatchSeqDict(
-        {
-            a2_1: proper_return2_1,
-            a2_2: proper_return2_2
-        })
+            {
+                a2_1: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(0)),
+                a2_2: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(1)),
+            })
     )
 
     assert r is proper_return3

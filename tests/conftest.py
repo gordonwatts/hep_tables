@@ -1,4 +1,5 @@
 import ast
+from hep_tables.utils import QueryVarTracker
 from json import dumps, loads
 import logging
 import os
@@ -17,6 +18,12 @@ import asyncmock
 
 # dump out logs
 logging.basicConfig(level=logging.NOTSET)
+
+@pytest.fixture
+def mock_qt(mocker):
+    qt = mocker.MagicMock(spec=QueryVarTracker)
+    qt.new_var_name.return_value = 'e1000'
+    return qt
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import ast
 from hep_tables.utils import QueryVarTracker
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 from func_adl import EventDataset
 from func_adl.object_stream import ObjectStream
@@ -80,13 +80,7 @@ class sequence_transform(sequence_predicate_base):
         '''
         # Replace the argument references
         new_name = self._qt.new_var_name()
-        new_name_ast = ast.Name(id=new_name)
-
-        class replace_arg(ast.NodeTransformer):
-            def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> ast.AST:
-                return new_name_ast
-
-        arg_replacements = {k: replace_arg().visit(v) for k, v in seq_dict.items()}
+        arg_replacements = name_seq_argument(seq_dict, new_name)
 
         # Replace the arguments in the function
         class replace_ast(ast.NodeTransformer):
@@ -104,6 +98,17 @@ class sequence_transform(sequence_predicate_base):
 
         # Return the call
         return sequence.Select(lb)
+
+
+def name_seq_argument(seq_dict: Dict[ast.AST, ast.AST], new_name: str) -> Dict[ast.AST, ast.AST]:
+    new_name_ast = ast.Name(id=new_name)
+
+    class replace_arg(ast.NodeTransformer):
+        def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> ast.AST:
+            return new_name_ast
+
+    arg_replacements = {k: replace_arg().visit(v) for k, v in seq_dict.items()}
+    return arg_replacements
 
 
 class root_sequence_transform(sequence_predicate_base):
