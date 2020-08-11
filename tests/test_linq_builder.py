@@ -134,7 +134,7 @@ class MatchObjectSequence:
 
 
 def test_two_source_operator(mocker, mock_qt):
-    '''Return a sequence that creates a tuple of two values'''
+    '''An operation that splits into two and then combines back into one'''
 
     mine, a1, root_seq = mock_root_sequence_transform(mocker)
     g = Graph(directed=True)
@@ -185,3 +185,68 @@ def test_two_source_operator(mocker, mock_qt):
     )
 
     assert r is proper_return3
+
+
+def test_two_source_twice_operator(mocker, mock_qt):
+    'An operation that splits in two, and stays split in two for another generation.'
+
+    mine, a1, root_seq = mock_root_sequence_transform(mocker)
+    g = Graph(directed=True)
+    level_0 = g.add_vertex(node=a1, seq=root_seq)
+
+    a2_1 = ast.Constant(10)
+    seq_met21 = mocker.MagicMock(spec=sequence_transform)
+    proper_return2_1 = ObjectStream(ast.Name(id='a')).Select("lambda e1: e1.met21")
+    seq_met21.sequence.return_value = proper_return2_1
+    level_2_1 = g.add_vertex(node=a2_1, seq=seq_met21)
+    g.add_edge(level_2_1, level_0, main_seq=True)
+
+    a2_2 = ast.Constant(20)
+    seq_met22 = mocker.MagicMock(spec=sequence_transform)
+    proper_return2_2 = ObjectStream(ast.Name(id='b')).Select("lambda e1: e1.met22")
+    seq_met22.sequence.return_value = proper_return2_2
+    level_2_2 = g.add_vertex(node=a2_2, seq=seq_met22)
+    g.add_edge(level_2_2, level_0, main_seq=True)
+
+    a3_1 = ast.Constant(10)
+    seq_met31 = mocker.MagicMock(spec=sequence_transform)
+    proper_return3_1 = ObjectStream(ast.Name(id='c')).Select("lambda e1: e1.met31")
+    seq_met31.sequence.return_value = proper_return3_1
+    level_3_1 = g.add_vertex(node=a3_1, seq=seq_met31)
+    g.add_edge(level_3_1, level_2_1, main_seq=True)
+
+    a3_2 = ast.Constant(20)
+    seq_met32 = mocker.MagicMock(spec=sequence_transform)
+    proper_return2_2 = ObjectStream(ast.Name(id='d')).Select("lambda e1: e1.met32")
+    seq_met32.sequence.return_value = proper_return2_2
+    level_3_2 = g.add_vertex(node=a3_2, seq=seq_met32)
+    g.add_edge(level_3_2, level_2_2, main_seq=True)
+
+    a4 = ast.Constant(30)
+    seq_combine = mocker.MagicMock(spec=sequence_transform)
+    proper_return4 = ObjectStream(ast.Name(id='e')).Select("lambda e: e[0] + e[1]")
+    seq_combine.sequence.return_value = proper_return4
+    level_4 = g.add_vertex(node=a4, seq=seq_combine)
+    g.add_edge(level_4, level_3_1, main_seq=True)
+    g.add_edge(level_4, level_3_2, main_seq=False)
+
+    r = build_linq_expression(g, mock_qt)
+    assert r is not None
+
+    two_returns_1 = mine \
+        .Select("lambda e1000: (a.Select(lambda e1: e1.met21), b.Select(lambda e1: e1.met22))") \
+        .Select("lambda e1000: (d.Select(lambda e1: e1.met32), c.Select(lambda e1: e1.met31))")
+    two_returns_2 = mine \
+        .Select("lambda e1000: (b.Select(lambda e1: e1.met22), a.Select(lambda e1: e1.met21))") \
+        .Select("lambda e1000: (c.Select(lambda e1: e1.met31), d.Select(lambda e1: e1.met32))")
+
+    seq_combine.sequence.assert_called_with(
+        MatchObjectSequence([two_returns_1._ast, two_returns_2._ast]),
+        MatchSeqDict(
+            {
+                a3_1: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(1)),
+                a3_2: ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(0)),
+            })
+    )
+
+    assert r is proper_return4
