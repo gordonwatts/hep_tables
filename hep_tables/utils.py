@@ -6,11 +6,6 @@ from collections import namedtuple
 from dataframe_expressions import ast_DataFrame
 
 
-class FuncADLTablesException(Exception):
-    def __init__(self, msg):
-        super().__init__(self, msg)
-
-
 def _find_dataframes(a: ast.AST) -> ast_DataFrame:
     'Find the asts that represent dataframes. Limit to one or failure for now'
     class df_scanner(ast.NodeVisitor):

@@ -1,13 +1,19 @@
 import ast
+
+from dataframe_expressions.data_frame import DataFrame
+from hep_tables.exceptions import FuncADLTablesException
+
+from dataframe_expressions.asts import ast_DataFrame
+from hep_tables import xaod_table
 from typing import Callable, Iterable, List
 
 import pytest
 from igraph import Graph
 
 from hep_tables.sequence_builders import ast_to_graph
-from hep_tables.transforms import sequence_transform
+from hep_tables.transforms import root_sequence_transform, sequence_transform
 from hep_tables.type_info import type_inspector
-from hep_tables.utils import FuncADLTablesException, QueryVarTracker
+from hep_tables.utils import QueryVarTracker
 
 
 class TestEvent:
@@ -16,6 +22,56 @@ class TestEvent:
 
     def AFloat(self) -> float:
         ...
+
+
+def test_xaod_table_type(mocker):
+    'Add graph node for the root data frame'
+    df = mocker.MagicMock(spec=xaod_table)
+    df.table_type = TestEvent
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    g = Graph(directed=True)
+
+    a = ast_DataFrame(df)
+    g = ast_to_graph(a, q_mock, g, t_mock)
+
+    vertexes = g.vs()
+    assert len(vertexes) == 1
+    vtx = vertexes[0]
+    assert vtx['type'] == Iterable[TestEvent]
+    assert vtx['node'] is a
+    seq = vtx['seq']
+    assert isinstance(seq, root_sequence_transform)
+    assert seq.eds is df
+
+
+def test_xaod_table_not_first(mocker):
+    'The xaod_table should be the very first thing added to the graph'
+    df = mocker.MagicMock(spec=xaod_table)
+    df.table_type = TestEvent
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    g = Graph(directed=True)
+    g.add_vertex()
+
+    a = ast_DataFrame(df)
+    with pytest.raises(FuncADLTablesException):
+        ast_to_graph(a, q_mock, g, t_mock)
+
+
+def test_xaod_table_not_xaod_table(mocker):
+    'An ast_DataFrame should contain only a xaod_table'
+    df = mocker.MagicMock(spec=DataFrame)
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    g = Graph(directed=True)
+
+    a = ast_DataFrame(df)
+    with pytest.raises(FuncADLTablesException):
+        ast_to_graph(a, q_mock, g, t_mock)
 
 
 def test_attribute_known_list(mocker):

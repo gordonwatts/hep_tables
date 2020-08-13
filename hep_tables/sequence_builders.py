@@ -1,10 +1,14 @@
 import ast
-from hep_tables.transforms import astIteratorPlaceholder, sequence_transform
-from hep_tables.utils import FuncADLTablesException, QueryVarTracker
-from hep_tables.type_info import type_inspector
-from typing import Callable, Iterable, Optional
+from hep_tables.hep_table import xaod_table
+from typing import Iterable, Optional
+from dataframe_expressions.asts import ast_DataFrame
 
 from igraph import Graph, Vertex  # type: ignore
+
+from hep_tables.exceptions import FuncADLTablesException
+from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_transform
+from hep_tables.type_info import type_inspector
+from hep_tables.utils import QueryVarTracker
 
 
 def ast_to_graph(a: ast.AST, qt: QueryVarTracker,
@@ -66,6 +70,24 @@ class _translate_to_sequence(ast.NodeVisitor):
 
         v = self._g.add_vertex(node=node, seq=t, type=Iterable[return_type])
         self._g.add_edge(v, v_source, main_seq=True)
+
+    def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:
+        '''Visit a root of the tree. This will form the basis of all of the graph.
+
+        Args:
+            node (ast_DataFrame): The ast_Dataframe Node
+
+        Notes:
+
+        - There can be no more than one single node at the root of this
+        '''
+        if len(self._g.vs()) != 0:
+            raise FuncADLTablesException('func_adl_tables can only handle a single xaod_tables root!')
+        df = node.dataframe
+        if not isinstance(df, xaod_table):
+            raise FuncADLTablesException('func_adl_tables needs an xaod_table as the root')
+
+        self._g.add_vertex(node=node, type=Iterable[df.table_type], seq=root_sequence_transform(df))
 
 
 def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:

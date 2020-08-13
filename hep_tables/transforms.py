@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import ast
+from hep_tables.hep_table import xaod_table
 from hep_tables.utils import QueryVarTracker
 from typing import List, Dict, Optional
 
@@ -113,12 +114,12 @@ def name_seq_argument(seq_dict: Dict[ast.AST, ast.AST], new_name: str) -> Dict[a
 
 class root_sequence_transform(sequence_predicate_base):
     '''Takes the source of all of this'''
-    def __init__(self, ds: EventDataset):
+    def __init__(self, ds: xaod_table):
         self._eds = ds
 
     @property
-    def eds(self) -> EventDataset:
-        '''Return the EventDataSource for this transform
+    def eds(self) -> xaod_table:
+        '''Return the xaod_table for this transform
 
         Returns:
             EventDataset: The root event data source
