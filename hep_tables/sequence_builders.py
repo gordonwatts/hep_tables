@@ -1,6 +1,6 @@
 import ast
 from hep_tables.hep_table import xaod_table
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Type
 from dataframe_expressions.asts import ast_DataFrame
 
 from igraph import Graph, Vertex  # type: ignore
@@ -50,25 +50,40 @@ class _translate_to_sequence(ast.NodeVisitor):
         # Make sure the base is already dealt with and in the graph
         self.visit(node.value)
 
-        # Next, we need to get the type of this attribute and what it will be returning
         v_source = _get_vertex_for_ast(self._g, node.value)
-        v_type = self._t_inspect.iterable_object(v_source['type'])
-        if v_type is None:
-            raise FuncADLTablesException(f'Do not know how to operate on a sequence that is not iterable ({v_source["type"]})')
 
-        attr_type = self._t_inspect.attribute_type(v_type, node.attr)
+        # Now, find a type which has the node on it. This is an implied loop, so we might have to dig
+        # through some of the iterable layers to find it.
+        v_type = v_source['type']
+        attr_type: Optional[Type] = None
+        depth = 0
+        while attr_type is None:
+            v_type = self._t_inspect.iterable_object(v_type)
+            depth += 1
+            if v_type is None:
+                # TODO: This might be an internal error, not a user error. Not totally sure.
+                raise FuncADLTablesException(f'Do not know how to apply "{node.attr}" on a sequence that is not iterable ({v_source["type"]})')
+
+            attr_type = self._t_inspect.attribute_type(v_type, node.attr)
+
+        # Next, get out the argument and return type.
         arg_types, return_type = self._t_inspect.callable_type(attr_type)
-        if arg_types is None:
+        if arg_types is None or return_type is None:
             raise FuncADLTablesException(f'Do not know how to deal with an attribute of type {attr_type}')
         if len(arg_types) != 0:
             raise FuncADLTablesException(f'Implied function call to {node.attr} requires {len(arg_types)} arguments - none given.')
 
-        # Code this up as a call, propagating the return type.
+        # Get the output type
+        seq_out_type = return_type
+        for i in range(depth):
+            seq_out_type = Iterable[seq_out_type]
+
+        # Code this up as a call, propagating the sequence return type.
         sequence_ph = astIteratorPlaceholder()
         function_call = ast.Call(func=ast.Attribute(value=sequence_ph, attr=node.attr), args=[], keywords={})
         t = sequence_transform([sequence_ph], function_call, self._qt)
 
-        v = self._g.add_vertex(node=node, seq=t, type=Iterable[return_type])
+        v = self._g.add_vertex(node=node, seq=t, type=seq_out_type, itr_depth=depth)
         self._g.add_edge(v, v_source, main_seq=True)
 
     def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:

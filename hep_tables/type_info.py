@@ -1,5 +1,5 @@
 import inspect
-from typing import Callable, List
+from typing import Callable, List, Optional, Tuple, Type
 
 
 class type_inspector:
@@ -16,8 +16,7 @@ class type_inspector:
       a list of jets that has been filtered.
        - TODO: Support a sequence when you can take the length directly (after filtering you can't).
     '''
-    @staticmethod
-    def attribute_type(base_type: type, attribute_name: str) -> type:
+    def attribute_type(self, base_type: Type, attribute_name: str) -> Type:
         '''Return the type for an attribute.
 
         Args:
@@ -38,3 +37,59 @@ class type_inspector:
         args: List[type] = [sig.parameters[p].annotation for p in sig.parameters.keys()][1:]
         rtn_type = sig.return_annotation
         return Callable[args, rtn_type]  # type: ignore
+
+    def iterable_object(self, i_type: Type) -> Optional[Type]:
+        '''If `i_type` is `Iterable[X]`, then return `x`, otherwise return None.
+
+        Args:
+            i_type (type): The type-hint to check
+
+        Returns:
+            Optional[type]: Return None if `i_type` isn't iterable. Otherwise return the object.
+        '''
+        raise NotImplementedError()
+
+    def callable_type(self, c_type: Type) -> Tuple[Optional[List[Type]], Optional[Type]]:
+        '''Returns information about a callable type, or None
+
+        Args:
+            c_type (type): The type-hint for a callable.
+
+        Returns:
+            Tuple[Optional[List[type]], type]: Returns `(None, None)` if the type isn't callable, otherwise
+            returns a list of argument types and the return type.
+        '''
+        raise NotImplementedError()
+
+    # def sequence_type(self, in_seq_type: Type, transform_info: Tuple[Type, Type]) -> Tuple[Optional[Type], Optional[int]]:
+    #     '''Determines the resulting sequence type and how many levels in for a transformation to be applied.
+
+    #     Example:
+
+    #         - in_seq_type=float, transform_info=(float, float). This translates a float to a float, and
+    #         no change in depth. Further it operates at the top level. Return: (float, 0).
+
+    #        - in_seq_type=Iterable[float], transform_info=(float, float). This translates a float to a float, and
+    #        no change in depth. Further, the transform will operate on items (floats) at one level down. Returns:
+    #        (Iterable[float], 1).
+
+    #        - in_seq_type=Iterable[Iterable[Jet]], transform_info(Jet, float). This translates a jet to a float (like
+    #        looking at the pt of the jet).It Operates on the jet, so that is two levesl down. Returns: (Iterable[Iterable[float]],
+    #        2).
+
+    #        - in_seq_type=Iterable[Iterable[Jet]], transform_info(Iterable[Jet], float). This does some sort of aggregate operation
+    #        of a list of jets. It operates on the list of jets, so that is one level down. Returns (Iterable[float], 1).
+
+    #        - in_seq_type=Iterable[float], transform_info=(Jet, float). This is not possible, as the Jet is not in the in_seq_type.
+    #        Returns: None
+
+    #     Args:
+    #         in_seq_type (Type): The type of the input sequence.
+    #         transform_info (Tuple[Type, Type]): Tuple of types that dictate how the transform will apply. The
+    #         first type is the type that is consumed, and the second is the output type from the transform. The input
+    #         type will be found in the `in_seq_type` and replaced by the output type.
+
+    #     Returns:
+    #         Tuple[Type, int]: [description]
+    #     '''
+    #     raise NotImplementedError()

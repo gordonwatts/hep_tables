@@ -5,7 +5,7 @@ from hep_tables.exceptions import FuncADLTablesException
 
 from dataframe_expressions.asts import ast_DataFrame
 from hep_tables import xaod_table
-from typing import Callable, Iterable, List
+from typing import Callable, Iterable, List, Optional, Type
 
 import pytest
 from igraph import Graph
@@ -16,11 +16,19 @@ from hep_tables.type_info import type_inspector
 from hep_tables.utils import QueryVarTracker
 
 
+class Jets:
+    def pt(self) -> float: 
+        ...
+
+
 class TestEvent:
     def ListOfFloats(self) -> List[float]:
         ...
 
     def AFloat(self) -> float:
+        ...
+
+    def Jets(self) -> Iterable[Jets]:
         ...
 
 
@@ -88,7 +96,7 @@ def test_attribute_known_list(mocker):
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
 
     g = Graph(directed=True)
-    a_vtx = g.add_vertex(node=a, type=Iterable[TestEvent])
+    a_vtx = g.add_vertex(node=a, type=Iterable[TestEvent], itr_depth=1)
 
     ast_to_graph(pt, q_mock, g, t_mock)
 
@@ -108,6 +116,7 @@ def test_attribute_known_list(mocker):
     attr_vtx = e1.source_vertex
     assert attr_vtx['type'] == Iterable[float]
     assert attr_vtx['node'] is pt
+    assert attr_vtx['itr_depth'] == 1
     seq = attr_vtx['seq']
     assert isinstance(seq, sequence_transform)
     assert ast.dump(seq._function) == "Call(func=Attribute(value=astIteratorPlaceholder(), attr='AFloat'), args=[], keywords={})"
@@ -170,4 +179,53 @@ def test_attribute_default(mocker):
         ast_to_graph(pt, q_mock, g, t_mock)
 
 
-# The same but with explicit calls.
+def test_attribute_implied_loop(mocker):
+    'Look at a float number of a list in the list of events'
+    a = ast.Name(id='a')
+    pt = ast.Attribute(value=a, attr='pt')
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+
+    def attr_type(attr_type: Type, attr_name: str) -> Optional[Type]:
+        if attr_type == Iterable[Jets]:
+            return None
+        if attr_type == Jets:
+            return Callable[[], float]
+        assert False, f'called for type {attr_type} - no idea'
+
+    t_mock.attribute_type.side_effect = attr_type
+    t_mock.callable_type.return_value = ([], float)
+
+    def iterator_unroll(t: Type) -> Type:
+        if t == Iterable[Iterable[Jets]]:
+            return Iterable[Jets]
+        if t == Iterable[Jets]:
+            return Jets
+        assert False, "we should not have been called"
+
+    t_mock.iterable_object.side_effect = iterator_unroll
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+
+    g = Graph(directed=True)
+    a_vtx = g.add_vertex(node=a, type=Iterable[Iterable[Jets]], itr_depth=1)
+
+    ast_to_graph(pt, q_mock, g, t_mock)
+
+    vertexes = g.vs()
+    assert len(vertexes) == 2
+
+    edges = a_vtx.in_edges()
+    assert len(edges) == 1
+
+    e1 = edges[0]
+    assert e1['main_seq'] is True
+    assert e1.target_vertex == a_vtx
+
+    attr_vtx = e1.source_vertex
+    assert attr_vtx['type'] == Iterable[Iterable[float]]
+    assert attr_vtx['node'] is pt
+    assert attr_vtx['itr_depth'] == 2
+    seq = attr_vtx['seq']
+    assert isinstance(seq, sequence_transform)
+    assert ast.dump(seq._function) != "Call(func=Attribute(value=astIteratorPlaceholder(), attr='AFloat'), args=[], keywords={})"
