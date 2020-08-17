@@ -60,6 +60,7 @@
         "setuptools",
         "treeme",
         "unittests",
+        "vtxs",
         "xaod",
         "xrootd"
     ],

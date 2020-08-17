@@ -17,7 +17,7 @@ from hep_tables.utils import QueryVarTracker
 
 
 class Jets:
-    def pt(self) -> float: 
+    def pt(self) -> float:
         ...
 
 

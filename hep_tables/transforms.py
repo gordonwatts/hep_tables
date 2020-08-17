@@ -4,7 +4,6 @@ from hep_tables.hep_table import xaod_table
 from hep_tables.utils import QueryVarTracker
 from typing import List, Dict, Optional
 
-from func_adl import EventDataset
 from func_adl.object_stream import ObjectStream
 from func_adl.util_ast import lambda_build
 
@@ -23,7 +22,7 @@ class sequence_predicate_base(ABC):
         pass
 
     @abstractmethod
-    def sequence(self, sequence: ObjectStream,
+    def sequence(self, sequence: Optional[ObjectStream],
                  seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
         '''Apply the operation to the sequence `sequence`
 

@@ -3,8 +3,8 @@ import ast
 from func_adl.event_dataset import EventDataset
 from func_adl.object_stream import ObjectStream
 from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_transform
-from hep_tables.linq_builder import build_linq_expression, depth_first_traversal
-from typing import Any, Dict, List
+from hep_tables.linq_builder import build_linq_expression, depth_first_traversal, split_by_iteration_depth
+from typing import Any, Dict, Optional
 from dataframe_expressions import ast_DataFrame
 from hep_tables import xaod_table
 from igraph import Graph
@@ -41,6 +41,34 @@ def test_travesal_branch():
     assert r[2][0] == a4
 
 
+def test_ordered_with_one():
+    g = Graph(directed=True)
+    g.add_vertex(itr_depth=1)
+    d = split_by_iteration_depth(g.vs())
+    assert len(d.keys()) == 1
+    assert 1 in d
+
+
+def test_ordered_with_one_deep():
+    g = Graph(directed=True)
+    g.add_vertex(itr_depth=2)
+    d = split_by_iteration_depth(g.vs())
+    assert len(d.keys()) == 2
+    assert list(d.keys()) == [2, 1]
+    assert len(d[1]) == 0
+    assert len(d[2]) == 1
+
+
+def test_ordered_with_two_at_level_1():
+    g = Graph(directed=True)
+    g.add_vertex(itr_depth=2)
+    g.add_vertex(itr_depth=2)
+    d = split_by_iteration_depth(g.vs())
+    assert len(d.keys()) == 2
+    assert len(d[1]) == 0
+    assert len(d[2]) == 2
+
+
 class my_events(EventDataset):
     '''Dummy event source'''
     async def execute_result_async(self, a: ast.AST) -> Any:
@@ -63,7 +91,7 @@ def test_just_the_source(mocker, mock_qt):
 
     mine, a, root_seq = mock_root_sequence_transform(mocker)
     g = Graph(directed=True)
-    g.add_vertex(node=a, seq=root_seq)
+    g.add_vertex(node=a, seq=root_seq, itr_depth=1)
 
     r = build_linq_expression(g, mock_qt)
     root_seq.sequence.assert_called_with(None, {})
@@ -96,20 +124,50 @@ def test_source_and_single_generator(mocker, mock_qt):
     '''Return a sequence of met stuff'''
     mine, a1, root_seq = mock_root_sequence_transform(mocker)
     g = Graph(directed=True)
-    level_0 = g.add_vertex(node=a1, seq=root_seq)
+    level_0 = g.add_vertex(node=a1, seq=root_seq, itr_depth=1)
 
     a2 = ast.Constant(10)
     seq_met = mocker.MagicMock(spec=sequence_transform)
     proper_return = mine.Select("lambda e1: e1.met")
     seq_met.sequence.return_value = proper_return
-    level_1 = g.add_vertex(node=a2, seq=seq_met)
+    level_1 = g.add_vertex(node=a2, seq=seq_met, itr_depth=1)
 
-    g.add_edge(level_1, level_0)
+    g.add_edge(level_1, level_0, main_seq=True)
 
     r = build_linq_expression(g, mock_qt)
 
     assert r is proper_return
     seq_met.sequence.assert_called_with(mine, MatchSeqDict({a1: astIteratorPlaceholder()}))
+
+
+def test_down_level(mocker, mock_qt):
+    '''pt is on an array of arrays - so we need a nested Select here'''
+    mine, a1, root_seq = mock_root_sequence_transform(mocker)
+    g = Graph(directed=True)
+    level_0 = g.add_vertex(node=a1, seq=root_seq, itr_depth=1)
+
+    a2 = ast.Constant(10)
+    seq_met = mocker.MagicMock(spec=sequence_transform)
+    proper_return: Optional[ObjectStream] = None
+
+    def do_sequence(s: ObjectStream, arg_repl: Dict[ast.AST, ast.AST]):
+        nonlocal proper_return
+        proper_return = s.Select("lambda e1: e1.pt")
+        return proper_return
+
+    seq_met.sequence.side_effect = do_sequence
+    level_1 = g.add_vertex(node=a2, seq=seq_met, itr_depth=2)
+
+    g.add_edge(level_1, level_0, main_seq=True)
+
+    r = build_linq_expression(g, mock_qt)
+
+    # assert r is proper_return
+    answer = mine.Select("lambda e1000: e1000.Select(lambda e1: e1.pt)")
+    assert MatchObjectSequence(answer._ast) == r
+    # assert ast.dump(r._ast) == ast.dump(answer._ast)
+
+# TODO: test two levesl down
 
 
 class MatchObjectSequence:
@@ -138,27 +196,27 @@ def test_two_source_operator(mocker, mock_qt):
 
     mine, a1, root_seq = mock_root_sequence_transform(mocker)
     g = Graph(directed=True)
-    level_0 = g.add_vertex(node=a1, seq=root_seq)
+    level_0 = g.add_vertex(node=a1, seq=root_seq, itr_depth=1)
 
     a2_1 = ast.Constant(10)
     seq_met = mocker.MagicMock(spec=sequence_transform)
     proper_return2_1 = ObjectStream(ast.Name(id='a')).Select("lambda e1: e1.met")
     seq_met.sequence.return_value = proper_return2_1
-    level_1_1 = g.add_vertex(node=a2_1, seq=seq_met, order=0)
+    level_1_1 = g.add_vertex(node=a2_1, seq=seq_met, order=0, itr_depth=1)
     g.add_edge(level_1_1, level_0, main_seq=True)
 
     a2_2 = ast.Constant(20)
     seq_met_prime = mocker.MagicMock(spec=sequence_transform)
     proper_return2_2 = ObjectStream(ast.Name(id='b')).Select("lambda e1: e1.met_prime")
     seq_met_prime.sequence.return_value = proper_return2_2
-    level_1_2 = g.add_vertex(node=a2_2, seq=seq_met_prime, order=1)
+    level_1_2 = g.add_vertex(node=a2_2, seq=seq_met_prime, order=1, itr_depth=1)
     g.add_edge(level_1_2, level_0, main_seq=True)
 
     a3 = ast.Constant(30)
     seq_combine = mocker.MagicMock(spec=sequence_transform)
     proper_return3 = ObjectStream(ast.Name(id='c')).Select("lambda e: e[0] + e[1]")
     seq_combine.sequence.return_value = proper_return3
-    level_2 = g.add_vertex(node=a3, seq=seq_combine)
+    level_2 = g.add_vertex(node=a3, seq=seq_combine, itr_depth=1)
     g.add_edge(level_2, level_1_1, main_seq=True)
     g.add_edge(level_2, level_1_2, main_seq=False)
 
@@ -190,41 +248,41 @@ def test_two_source_twice_operator(mocker, mock_qt):
 
     mine, a1, root_seq = mock_root_sequence_transform(mocker)
     g = Graph(directed=True)
-    level_0 = g.add_vertex(node=a1, seq=root_seq)
+    level_0 = g.add_vertex(node=a1, seq=root_seq, itr_depth=1)
 
     a2_1 = ast.Constant(10)
     seq_met21 = mocker.MagicMock(spec=sequence_transform)
     proper_return2_1 = ObjectStream(ast.Name(id='a')).Select("lambda e1: e1.met21")
     seq_met21.sequence.return_value = proper_return2_1
-    level_2_1 = g.add_vertex(node=a2_1, seq=seq_met21, order=0)
+    level_2_1 = g.add_vertex(node=a2_1, seq=seq_met21, order=0, itr_depth=1)
     g.add_edge(level_2_1, level_0, main_seq=True)
 
     a2_2 = ast.Constant(20)
     seq_met22 = mocker.MagicMock(spec=sequence_transform)
     proper_return2_2 = ObjectStream(ast.Name(id='b')).Select("lambda e1: e1.met22")
     seq_met22.sequence.return_value = proper_return2_2
-    level_2_2 = g.add_vertex(node=a2_2, seq=seq_met22, order=1)
+    level_2_2 = g.add_vertex(node=a2_2, seq=seq_met22, order=1, itr_depth=1)
     g.add_edge(level_2_2, level_0, main_seq=True)
 
     a3_1 = ast.Constant(10)
     seq_met31 = mocker.MagicMock(spec=sequence_transform)
     proper_return3_1 = ObjectStream(ast.Name(id='c')).Select("lambda e1: e1.met31")
     seq_met31.sequence.return_value = proper_return3_1
-    level_3_1 = g.add_vertex(node=a3_1, seq=seq_met31, order=0)
+    level_3_1 = g.add_vertex(node=a3_1, seq=seq_met31, order=0, itr_depth=1)
     g.add_edge(level_3_1, level_2_1, main_seq=True)
 
     a3_2 = ast.Constant(20)
     seq_met32 = mocker.MagicMock(spec=sequence_transform)
     proper_return2_2 = ObjectStream(ast.Name(id='d')).Select("lambda e1: e1.met32")
     seq_met32.sequence.return_value = proper_return2_2
-    level_3_2 = g.add_vertex(node=a3_2, seq=seq_met32, order=1)
+    level_3_2 = g.add_vertex(node=a3_2, seq=seq_met32, order=1, itr_depth=1)
     g.add_edge(level_3_2, level_2_2, main_seq=True)
 
     a4 = ast.Constant(30)
     seq_combine = mocker.MagicMock(spec=sequence_transform)
     proper_return4 = ObjectStream(ast.Name(id='e')).Select("lambda e: e[0] + e[1]")
     seq_combine.sequence.return_value = proper_return4
-    level_4 = g.add_vertex(node=a4, seq=seq_combine)
+    level_4 = g.add_vertex(node=a4, seq=seq_combine, itr_depth=1)
     g.add_edge(level_4, level_3_1, main_seq=True)
     g.add_edge(level_4, level_3_2, main_seq=False)
 
