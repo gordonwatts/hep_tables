@@ -167,7 +167,8 @@ def test_down_level(mocker, mock_qt):
     assert MatchObjectSequence(answer._ast) == r
     # assert ast.dump(r._ast) == ast.dump(answer._ast)
 
-# TODO: test two levesl down
+# TODO: test two levels down
+# TODO: carry along met and something n-levels down with a gap guy in there.
 
 
 class MatchObjectSequence:
