@@ -26,7 +26,7 @@ setup(name="hep_tables",
       license="TBD",
       test_suite="tests",
       install_requires=["func_adl_xaod>=1.1b1,<2a", "servicex>=2b1,<3a", "dataframe_expressions>=1b1,<2a",
-                        "make_it_sync"],
+                        "make_it_sync", "igraph"],
       extras_require=extras_require,
       classifiers=[
                    # "Development Status :: 3 - Alpha",
