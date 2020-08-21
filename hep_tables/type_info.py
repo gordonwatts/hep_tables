@@ -16,7 +16,7 @@ class type_inspector:
       a list of jets that has been filtered.
        - TODO: Support a sequence when you can take the length directly (after filtering you can't).
     '''
-    def attribute_type(self, base_type: Type, attribute_name: str) -> Type:
+    def attribute_type(self, base_type: Type, attribute_name: str) -> Optional[Type]:
         '''Return the type for an attribute.
 
         Args:
@@ -24,11 +24,12 @@ class type_inspector:
             attribute_name (str): The name of the attribute to return
 
         Returns:
-            type: The type of the attribute
+            type: The type of the attribute. If the object has no such attribute, then we return
+            None.
         '''
         a = getattr(base_type, attribute_name, None)
         if a is None:
-            raise NotImplementedError()
+            return None
         if not callable(a):
             raise NotImplementedError()
 
@@ -47,7 +48,15 @@ class type_inspector:
         Returns:
             Optional[type]: Return None if `i_type` isn't iterable. Otherwise return the object.
         '''
-        raise NotImplementedError()
+        if type(i_type).__name__ != '_GenericAlias':
+            return None
+
+        import collections
+        if i_type.__origin__ != collections.abc.Iterable:
+            return None
+
+        assert len(i_type.__args__) == 1, f'Internal error - iterable with wrong number of args: {i_type}.'
+        return i_type.__args__[0]
 
     def callable_type(self, c_type: Type) -> Tuple[Optional[List[Type]], Optional[Type]]:
         '''Returns information about a callable type, or None
@@ -59,7 +68,18 @@ class type_inspector:
             Tuple[Optional[List[type]], type]: Returns `(None, None)` if the type isn't callable, otherwise
             returns a list of argument types and the return type.
         '''
-        raise NotImplementedError()
+        if type(c_type).__name__ != '_GenericAlias':
+            return (None, None)
+
+        import collections
+        if c_type.__origin__ != collections.abc.Callable:
+            return (None, None)
+
+        return_type = c_type.__args__[-1]
+        arg_types = list(c_type.__args__[0:-1])
+
+        return (arg_types, return_type)
+
 
     # def sequence_type(self, in_seq_type: Type, transform_info: Tuple[Type, Type]) -> Tuple[Optional[Type], Optional[int]]:
     #     '''Determines the resulting sequence type and how many levels in for a transformation to be applied.

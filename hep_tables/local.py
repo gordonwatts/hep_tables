@@ -1,5 +1,8 @@
 import ast
 import asyncio
+from hep_tables.graph_linq_reducers import run_linear_reduction
+from hep_tables.linq_builder import build_linq_expression
+from hep_tables.sequence_builders import ast_to_graph
 import logging
 from typing import Any, List, Union
 
@@ -68,6 +71,7 @@ async def _make_local_from_expression_async(expression: ast.AST,
         return results[0]
 
     import awkward
+    # TODO: how does this work with lazy arrays?
     return awkward.concatenate(results)
 
 
@@ -81,8 +85,6 @@ async def make_local_async(df: Union[DataFrame, Column]) -> Any:  # type: ignore
 
     Arguments:
         df              A DataFrame that is based on an `xaod_table`.
-        force_rerun     If true, then no data will be pulled from any cache, and the
-                        query will be re-run from scratch.
 
     Returns:
         Values      A Jagged array, or other objects, depending on the query
@@ -96,3 +98,31 @@ async def make_local_async(df: Union[DataFrame, Column]) -> Any:  # type: ignore
 
 
 make_local = make_sync(make_local_async)
+
+
+async def _new_make_local_async(df: DataFrame) -> Any:
+    '''Returns a local rep of a dataframe we can process
+
+    Args:
+        df (DataFrame): The dataframe that we need to return locally
+
+    Returns:
+        Any: The data that was requested.
+    '''
+    expression, context = render(df)
+    lg = logging.getLogger(__name__)
+    lg.debug(f'make_local expression: {ast.dump(expression)}')
+
+    # Turn the expression into a graph, and get the func_adl sequence for it.
+    qt = QueryVarTracker()
+    g = ast_to_graph(expression, qt)
+    run_linear_reduction(g, qt)
+    o_stream = build_linq_expression(g)
+
+    # And get the return back.
+    # Note that the `default_col_name` is there to deal with testing - when we have a file
+    # that internally has somethign different than what we want to use here.
+    return (await o_stream.AsAwkwardArray(['col1']).value_async())[default_col_name]
+
+
+_new_make_local = make_sync(_new_make_local_async)

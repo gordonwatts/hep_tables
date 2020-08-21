@@ -1,20 +1,24 @@
 import ast
-from hep_tables.utils import QueryVarTracker
-from json import dumps, loads
 import logging
 import os
 import shutil
 import tempfile
+from json import dumps, loads
+from typing import Any, Callable, Union
 from unittest import mock
 
-from servicex import ServiceXDataset
+import asyncmock
 import pytest
+from dataframe_expressions.alias import _reset_alias_catalog
+from dataframe_expressions.asts import ast_DataFrame
+from func_adl.event_dataset import EventDataset
+from func_adl.object_stream import ObjectStream
+from servicex import ServiceXDataset, clean_linq
 
 import hep_tables.local as hep_local
-from dataframe_expressions.alias import _reset_alias_catalog
-from servicex import clean_linq
-import asyncmock
-
+from hep_tables.hep_table import xaod_table
+from hep_tables.transforms import root_sequence_transform
+from hep_tables.utils import QueryVarTracker
 
 # dump out logs
 logging.basicConfig(level=logging.NOTSET)
@@ -22,8 +26,15 @@ logging.basicConfig(level=logging.NOTSET)
 
 @pytest.fixture
 def mock_qt(mocker):
+    count = 999
+
+    def return_count():
+        nonlocal count
+        count += 1
+        return f'e{count}'
+
     qt = mocker.MagicMock(spec=QueryVarTracker)
-    qt.new_var_name.return_value = 'e1000'
+    qt.new_var_name.side_effect = return_count
     return qt
 
 
@@ -48,9 +59,94 @@ def servicex_ds(mocker):
     return x
 
 
-def extract_selection(ds):
+def extract_selection(ds) -> str:
     'Extract the selection from the magic mock for the dataset for the last call'
     return ds.get_data_awkward_async.call_args[0][0]
+
+
+class my_events(EventDataset):
+    '''Dummy event source'''
+    async def execute_result_async(self, a: ast.AST) -> Any:
+        pass
+
+
+@pytest.fixture
+def mock_root_sequence_transform(mocker):
+    '''Creates a mock sequence transform'''
+    mine = my_events()
+    a = ast_DataFrame(xaod_table(mine))
+
+    root_seq = mocker.MagicMock(spec=root_sequence_transform)
+    root_seq.sequence.return_value = mine
+
+    return mine, a, root_seq
+
+
+class MatchAST:
+    def __init__(self, true_ast: ast.AST):
+        '''Match object for an ast'''
+        self._true_ast = true_ast
+
+    def clean(self, a: Union[str, ast.AST]):
+        base_string = ast.dump(a) if isinstance(a, ast.AST) else a
+        return base_string \
+            .replace(', annotation=None', '') \
+            .replace(', vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]', '') \
+            .replace(', ctx=Load()', '')
+
+    def __eq__(self, other: ast.AST):
+        other_ast = self.clean(other)
+        true_ast = self.clean(self._true_ast)
+        if true_ast != other_ast:
+            print(f'true: {true_ast}')
+            print(f'test: {other_ast}')
+
+
+class MatchObjectSequence:
+    def __init__(self, a_list: ObjectStream):
+        from func_adl.ast.func_adl_ast_utils import change_extension_functions_to_calls
+        self._asts = [change_extension_functions_to_calls(a_list._ast)]
+
+    def clean(self, a: Union[str, ast.AST]):
+        base_string = ast.dump(a) if isinstance(a, ast.AST) else a
+        return base_string \
+            .replace(', annotation=None', '') \
+            .replace(', vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]', '') \
+            .replace(', ctx=Load()', '')
+
+    def __eq__(self, other: Union[str, ObjectStream]):
+        other_ast = self.clean(other._ast) if isinstance(other, ObjectStream) else other
+        r = any(self.clean(a) == other_ast for a in self._asts)
+        if not r:
+            print(f'test: {other_ast}')
+            for a in self._asts:
+                print(f'true: {self.clean(a)}')
+        return r
+
+
+class MatchQastleSequence:
+    def __init__(self, linq_expr: Callable[[ObjectStream], ObjectStream]):
+        class as_qastle(EventDataset):
+            async def execute_result_async(self, a: ast.AST) -> Any:
+                from func_adl.ast.func_adl_ast_utils import change_extension_functions_to_calls
+                a = change_extension_functions_to_calls(a)
+                from qastle import python_ast_to_text_ast
+                return clean_linq(python_ast_to_text_ast(a))
+
+            def __repr__(self):
+                return "'ServiceXDatasetSource'"
+
+        os = linq_expr(as_qastle())
+        self._qastle = os.AsROOTTTree('file.root', 'treeme', ['col1']).value()
+
+    def __eq__(self, other: str):
+        other = clean_linq(other)
+        if self._qastle != other:
+            print(f'true: {self._qastle}')
+            print(f'test: {other}')
+            return False
+        else:
+            return True
 
 
 @pytest.fixture(autouse=True)

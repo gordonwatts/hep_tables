@@ -1,12 +1,13 @@
 import ast
-from hep_tables.hep_table import xaod_table
 from typing import Iterable, Optional, Type
-from dataframe_expressions.asts import ast_DataFrame
 
+from dataframe_expressions.asts import ast_DataFrame
+from func_adl.util_ast import lambda_build
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
-from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_transform
+from hep_tables.hep_table import xaod_table
+from hep_tables.transforms import root_sequence_transform, sequence_transform
 from hep_tables.type_info import type_inspector
 from hep_tables.utils import QueryVarTracker
 
@@ -79,9 +80,10 @@ class _translate_to_sequence(ast.NodeVisitor):
             seq_out_type = Iterable[seq_out_type]
 
         # Code this up as a call, propagating the sequence return type.
-        sequence_ph = astIteratorPlaceholder()
-        function_call = ast.Call(func=ast.Attribute(value=sequence_ph, attr=node.attr), args=[], keywords={})
-        t = sequence_transform([sequence_ph], function_call, self._qt)
+        arg_name = self._qt.new_var_name()
+        sequence_ph = v_source['node']
+        function_call = ast.Call(func=ast.Attribute(value=ast.Name(id=arg_name), attr=node.attr), args=[], keywords=[])
+        t = sequence_transform([sequence_ph], lambda_build(arg_name, function_call))
 
         v = self._g.add_vertex(node=node, seq=t, type=seq_out_type, itr_depth=depth)
         self._g.add_edge(v, v_source, main_seq=True)
@@ -95,6 +97,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         Notes:
 
         - There can be no more than one single node at the root of this
+        - The node is always at itr depth 1, as it of type `Iterable[Event]`
         '''
         if len(self._g.vs()) != 0:
             raise FuncADLTablesException('func_adl_tables can only handle a single xaod_tables root!')
@@ -102,7 +105,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         if not isinstance(df, xaod_table):
             raise FuncADLTablesException('func_adl_tables needs an xaod_table as the root')
 
-        self._g.add_vertex(node=node, type=Iterable[df.table_type], seq=root_sequence_transform(df))
+        self._g.add_vertex(node=node, type=Iterable[df.table_type], seq=root_sequence_transform(df), itr_depth=1)
 
 
 def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:

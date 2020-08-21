@@ -3,6 +3,8 @@ import ast
 from dataframe_expressions.data_frame import DataFrame
 from hep_tables.exceptions import FuncADLTablesException
 
+from func_adl import ObjectStream
+
 from dataframe_expressions.asts import ast_DataFrame
 from hep_tables import xaod_table
 from typing import Callable, Iterable, List, Optional, Type
@@ -14,6 +16,7 @@ from hep_tables.sequence_builders import ast_to_graph
 from hep_tables.transforms import root_sequence_transform, sequence_transform
 from hep_tables.type_info import type_inspector
 from hep_tables.utils import QueryVarTracker
+from .conftest import MatchObjectSequence
 
 
 class Jets:
@@ -49,6 +52,7 @@ def test_xaod_table_type(mocker):
     vtx = vertexes[0]
     assert vtx['type'] == Iterable[TestEvent]
     assert vtx['node'] is a
+    assert vtx['itr_depth'] == 1
     seq = vtx['seq']
     assert isinstance(seq, root_sequence_transform)
     assert seq.eds is df
@@ -94,6 +98,7 @@ def test_attribute_known_list(mocker):
     t_mock.iterable_object.return_value = TestEvent
 
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
 
     g = Graph(directed=True)
     a_vtx = g.add_vertex(node=a, type=Iterable[TestEvent], itr_depth=1)
@@ -119,7 +124,9 @@ def test_attribute_known_list(mocker):
     assert attr_vtx['itr_depth'] == 1
     seq = attr_vtx['seq']
     assert isinstance(seq, sequence_transform)
-    assert ast.dump(seq._function) == "Call(func=Attribute(value=astIteratorPlaceholder(), attr='AFloat'), args=[], keywords={})"
+
+    base = ObjectStream(ast.Name(id='dude'))
+    assert MatchObjectSequence(base.Select("lambda e1000: e1000.AFloat()")) == seq.sequence(base, {})
 
 
 def test_attribute_non_iterable_object(mocker):
@@ -206,6 +213,7 @@ def test_attribute_implied_loop(mocker):
     t_mock.iterable_object.side_effect = iterator_unroll
 
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
 
     g = Graph(directed=True)
     a_vtx = g.add_vertex(node=a, type=Iterable[Iterable[Jets]], itr_depth=1)
@@ -228,4 +236,6 @@ def test_attribute_implied_loop(mocker):
     assert attr_vtx['itr_depth'] == 2
     seq = attr_vtx['seq']
     assert isinstance(seq, sequence_transform)
-    assert ast.dump(seq._function) != "Call(func=Attribute(value=astIteratorPlaceholder(), attr='AFloat'), args=[], keywords={})"
+
+    base = ObjectStream(ast.Name(id='dude'))
+    assert MatchObjectSequence(base.Select("lambda e1000: e1000.pt()")) == seq.sequence(base, {})
