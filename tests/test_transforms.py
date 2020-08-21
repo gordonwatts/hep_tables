@@ -9,7 +9,7 @@ from hep_tables.hep_table import xaod_table
 from hep_tables.transforms import (root_sequence_transform, sequence_downlevel,
                                    sequence_predicate_base, sequence_transform)
 
-from .conftest import MatchObjectSequence, mock_qt
+from .conftest import MatchObjectSequence
 
 
 def test_sequence_predicate_base():

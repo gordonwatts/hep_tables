@@ -77,7 +77,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         # Get the output type
         seq_out_type = return_type
         for i in range(depth):
-            seq_out_type = Iterable[seq_out_type]
+            seq_out_type = Iterable[seq_out_type]  # type: ignore
 
         # Code this up as a call, propagating the sequence return type.
         arg_name = self._qt.new_var_name()
@@ -105,7 +105,9 @@ class _translate_to_sequence(ast.NodeVisitor):
         if not isinstance(df, xaod_table):
             raise FuncADLTablesException('func_adl_tables needs an xaod_table as the root')
 
-        self._g.add_vertex(node=node, type=Iterable[df.table_type], seq=root_sequence_transform(df), itr_depth=1)
+        self._g.add_vertex(node=node,
+                           type=Iterable[df.table_type],  # type: ignore
+                           seq=root_sequence_transform(df), itr_depth=1)
 
 
 def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:

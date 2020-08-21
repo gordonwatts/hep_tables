@@ -1,4 +1,4 @@
-from typing import Iterable, Match
+from typing import Iterable
 from func_adl_xAOD import ServiceXDatasetSource
 
 from hep_tables import xaod_table

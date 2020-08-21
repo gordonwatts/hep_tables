@@ -2,7 +2,6 @@ import ast
 from abc import ABC, abstractmethod
 
 from func_adl.util_ast import lambda_build
-from hep_tables.utils import QueryVarTracker
 from typing import Dict, List, Optional, Tuple, Union
 
 from dataframe_expressions.utils_ast import CloningNodeTransformer

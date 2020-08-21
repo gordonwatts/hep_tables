@@ -31,7 +31,7 @@ def _dump_ast(statements: List[statement_base]):
 
 async def _result_from_source_async(s: ObjectStream,
                                     statements: List[statement_base],
-                                    base_statement: xaod_table) -> Any:
+                                    base_statement: statement_base) -> Any:
     'Convert a sequence of statements to its result form for a single source'
     result = s
     for seq in statements:
