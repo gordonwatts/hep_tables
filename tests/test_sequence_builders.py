@@ -13,7 +13,7 @@ import pytest
 from igraph import Graph
 
 from hep_tables.sequence_builders import ast_to_graph
-from hep_tables.transforms import root_sequence_transform, sequence_transform
+from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_transform
 from hep_tables.type_info import type_inspector
 from hep_tables.utils import QueryVarTracker
 from .conftest import MatchObjectSequence
@@ -239,3 +239,61 @@ def test_attribute_implied_loop(mocker):
 
     base = ObjectStream(ast.Name(id='dude'))
     assert MatchObjectSequence(base.Select("lambda e1000: e1000.pt()")) == seq.sequence(base, {})
+
+
+@pytest.mark.parametrize("operator", [ast.FloorDiv, ast.LShift, ast.RShift, ast.BitOr, ast.BitXor, ast.BitAnd, ast.MatMult])
+def test_binary_op_unsupported(operator, mocker):
+    'Test the binary operators'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=operator())
+
+    g = Graph(directed=True)
+    g.add_vertex(node=a, type=Iterable[float], itr_depth=1)
+    g.add_vertex(node=b, type=Iterable[float], itr_depth=1)
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    t_mock = mocker.MagicMock(spec=type_inspector)
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, q_mock, g, t_mock)
+
+    assert "Unsupported" in str(e.value)
+
+
+@pytest.mark.parametrize("operator, sym", [
+                         (ast.Add, '+'),
+                         (ast.Sub, '-'),
+                         (ast.Mult, '*'),
+                         (ast.Div, '/'),
+                         (ast.Mod, '%'),
+                         (ast.Pow, '**')
+                         ])
+def test_binary_op(operator, sym, mocker):
+    'Test the binary operators'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=operator())
+
+    g = Graph(directed=True)
+    g.add_vertex(node=a, type=Iterable[float], itr_depth=1)
+    g.add_vertex(node=b, type=Iterable[float], itr_depth=1)
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+
+    ast_to_graph(op, q_mock, g, t_mock)
+
+    assert len(g.vs()) == 3
+    op_v = list(g.vs())[-1]
+
+    assert op_v['type'] == Iterable[float]
+    assert op_v['node'] is op
+    assert op_v['itr_depth'] == 1
+
+    seq = op_v['seq']
+    assert isinstance(seq, sequence_transform)
+    base = ObjectStream(ast.Name(id='dude'))
+    assert MatchObjectSequence(base.Select(f"lambda e1000: e1000 {sym} e2000")) \
+        == seq.sequence(base, {a: astIteratorPlaceholder(), b: ast.Name(id='e2000')})

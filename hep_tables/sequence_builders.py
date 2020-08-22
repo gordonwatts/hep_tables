@@ -88,6 +88,46 @@ class _translate_to_sequence(ast.NodeVisitor):
         v = self._g.add_vertex(node=node, seq=t, type=seq_out_type, itr_depth=depth)
         self._g.add_edge(v, v_source, main_seq=True)
 
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        '''Process a python binary operator. We support:
+
+            - Add
+            - Sub
+            - Mult
+            - Div
+            - Mod
+            - Pow
+
+        Args:
+            node (BinOp): AST operator
+        '''
+        if isinstance(node.op, (ast.FloorDiv, ast.LShift, ast.RShift, ast.BitOr, ast.BitXor, ast.BitAnd, ast.MatMult)):
+            raise FuncADLTablesException(f'Unsupported binary operator "{node.op}".')
+
+        # Make sure everything below us has a place in the graph
+        self.visit(node.left)
+        self.visit(node.right)
+
+        left = _get_vertex_for_ast(self._g, node.left)
+        right = _get_vertex_for_ast(self._g, node.right)
+
+        # What level will this be operating at?
+        level = 1
+
+        # Figure out the return type given the types of these two
+        return_type = Iterable[float]
+
+        # And build the statement that will do the transform.
+        l_arg = self._qt.new_var_name()
+        l_func_body = ast.BinOp(left=ast.Name(id=l_arg), op=node.op, right=node.right)
+        l_func = lambda_build(l_arg, l_func_body)
+        s = sequence_transform([node.left, node.right], l_func)
+
+        # Create the vertex and connect to a and b via edges
+        op_vertex = self._g.add_vertex(node=node, type=return_type, seq=s, itr_depth=level)
+        self._g.add_edge(op_vertex, left, main_seq=True)
+        self._g.add_edge(op_vertex, right, main_seq=False)
+
     def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:
         '''Visit a root of the tree. This will form the basis of all of the graph.
 
