@@ -1,3 +1,4 @@
+from tests.conftest import mock_vinfo
 from igraph import Graph
 from hep_tables.util_graph import depth_first_traversal
 
@@ -15,12 +16,12 @@ def test_traversal_one():
     assert len(r[0]) == 1
 
 
-def test_travesal_branch():
+def test_travesal_branch(mocker):
     g = Graph(directed=True)
-    a1 = g.add_vertex()
-    a2 = g.add_vertex()
-    a3 = g.add_vertex()
-    a4 = g.add_vertex()
+    a1 = g.add_vertex(info=mock_vinfo(mocker, order=2))
+    a2 = g.add_vertex(info=mock_vinfo(mocker, order=2))
+    a3 = g.add_vertex(info=mock_vinfo(mocker, order=2))
+    a4 = g.add_vertex(info=mock_vinfo(mocker, order=2))
 
     g.add_edges([(a2, a1), (a3, a1), (a4, a2), (a4, a3)])
     r = list(depth_first_traversal(g))
@@ -33,11 +34,11 @@ def test_travesal_branch():
     assert r[2][0] == a4
 
 
-def test_traversal_ordered_1():
+def test_traversal_ordered_1(mocker):
     g = Graph(directed=True)
     a1 = g.add_vertex()
-    a2 = g.add_vertex(order=1)
-    a3 = g.add_vertex(order=2)
+    a2 = g.add_vertex(info=mock_vinfo(mocker, order=1))
+    a3 = g.add_vertex(info=mock_vinfo(mocker, order=2))
 
     g.add_edges([(a2, a1), (a3, a1)])
     r = list(depth_first_traversal(g))
@@ -45,11 +46,11 @@ def test_traversal_ordered_1():
     assert r[1][1] == a3
 
 
-def test_traversal_ordered_2():
+def test_traversal_ordered_2(mocker):
     g = Graph(directed=True)
     a1 = g.add_vertex()
-    a2 = g.add_vertex(order=2)
-    a3 = g.add_vertex(order=1)
+    a2 = g.add_vertex(info=mock_vinfo(mocker, order=2))
+    a3 = g.add_vertex(info=mock_vinfo(mocker, order=1))
 
     g.add_edges([(a2, a1), (a3, a1)])
     r = list(depth_first_traversal(g))

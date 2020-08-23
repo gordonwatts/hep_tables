@@ -1,3 +1,4 @@
+from hep_tables.graph_info import get_v_info
 from igraph import Graph, Vertex  # type: ignore
 from typing import Iterator, Tuple
 
@@ -20,7 +21,4 @@ def depth_first_traversal(g: Graph) -> Iterator[Tuple[Vertex]]:
         yield nodes
         new_nodes = [n.neighbors(mode='in') for n in nodes]
         u = set(n for n_list in new_nodes for n in n_list)
-        if all('order' in v.attribute_names() for v in u):
-            nodes = tuple(sorted(u, key=lambda v: v['order']))
-        else:
-            nodes = tuple(u)
+        nodes = tuple(sorted(u, key=lambda v: get_v_info(v).order))

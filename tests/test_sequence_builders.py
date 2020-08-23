@@ -1,4 +1,5 @@
 import ast
+from hep_tables.graph_info import get_v_info, v_info
 
 from dataframe_expressions.data_frame import DataFrame
 from hep_tables.exceptions import FuncADLTablesException
@@ -13,7 +14,7 @@ import pytest
 from igraph import Graph
 
 from hep_tables.sequence_builders import ast_to_graph
-from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_transform
+from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_predicate_base, sequence_transform
 from hep_tables.type_info import type_inspector
 from hep_tables.utils import QueryVarTracker
 from .conftest import MatchObjectSequence
@@ -50,10 +51,11 @@ def test_xaod_table_type(mocker):
     vertexes = g.vs()
     assert len(vertexes) == 1
     vtx = vertexes[0]
-    assert vtx['type'] == Iterable[TestEvent]
-    assert vtx['node'] is a
-    assert vtx['itr_depth'] == 1
-    seq = vtx['seq']
+    info = get_v_info(vtx)
+    assert info.v_type == Iterable[TestEvent]
+    assert info.node is a
+    assert info.level == 1
+    seq = info.sequence
     assert isinstance(seq, root_sequence_transform)
     assert seq.eds is df
 
@@ -101,7 +103,7 @@ def test_attribute_known_list(mocker):
     q_mock.new_var_name.return_value = 'e1000'
 
     g = Graph(directed=True)
-    a_vtx = g.add_vertex(node=a, type=Iterable[TestEvent], itr_depth=1)
+    a_vtx = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], a))
 
     ast_to_graph(pt, q_mock, g, t_mock)
 
@@ -118,11 +120,11 @@ def test_attribute_known_list(mocker):
     t_mock.attribute_type.assert_called_once()
     t_mock.attribute_type.assert_called_with(TestEvent, 'AFloat')
 
-    attr_vtx = e1.source_vertex
-    assert attr_vtx['type'] == Iterable[float]
-    assert attr_vtx['node'] is pt
-    assert attr_vtx['itr_depth'] == 1
-    seq = attr_vtx['seq']
+    attr_vtx = get_v_info(e1.source_vertex)
+    assert attr_vtx.v_type == Iterable[float]
+    assert attr_vtx.node is pt
+    assert attr_vtx.level == 1
+    seq = attr_vtx.sequence
     assert isinstance(seq, sequence_transform)
 
     base = ObjectStream(ast.Name(id='dude'))
@@ -142,7 +144,7 @@ def test_attribute_non_iterable_object(mocker):
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
 
     g = Graph(directed=True)
-    g.add_vertex(node=a, type=TestEvent)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), TestEvent, a))
 
     with pytest.raises(FuncADLTablesException):
         ast_to_graph(pt, q_mock, g, t_mock)
@@ -161,7 +163,7 @@ def test_attribute_with_args_not_given(mocker):
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
 
     g = Graph(directed=True)
-    g.add_vertex(node=a, type=Iterable[TestEvent])
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], a))
 
     with pytest.raises(FuncADLTablesException):
         ast_to_graph(pt, q_mock, g, t_mock)
@@ -180,7 +182,7 @@ def test_attribute_default(mocker):
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
 
     g = Graph(directed=True)
-    g.add_vertex(node=a, type=Iterable[TestEvent])
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], a))
 
     with pytest.raises(FuncADLTablesException):
         ast_to_graph(pt, q_mock, g, t_mock)
@@ -216,7 +218,7 @@ def test_attribute_implied_loop(mocker):
     q_mock.new_var_name.return_value = 'e1000'
 
     g = Graph(directed=True)
-    a_vtx = g.add_vertex(node=a, type=Iterable[Iterable[Jets]], itr_depth=1)
+    a_vtx = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[Jets]], a))
 
     ast_to_graph(pt, q_mock, g, t_mock)
 
@@ -230,11 +232,11 @@ def test_attribute_implied_loop(mocker):
     assert e1['main_seq'] is True
     assert e1.target_vertex == a_vtx
 
-    attr_vtx = e1.source_vertex
-    assert attr_vtx['type'] == Iterable[Iterable[float]]
-    assert attr_vtx['node'] is pt
-    assert attr_vtx['itr_depth'] == 2
-    seq = attr_vtx['seq']
+    attr_vtx = get_v_info(e1.source_vertex)
+    assert attr_vtx.v_type == Iterable[Iterable[float]]
+    assert attr_vtx.node is pt
+    assert attr_vtx.level == 2
+    seq = attr_vtx.sequence
     assert isinstance(seq, sequence_transform)
 
     base = ObjectStream(ast.Name(id='dude'))
@@ -249,8 +251,8 @@ def test_binary_op_unsupported(operator, mocker):
     op = ast.BinOp(left=a, right=b, op=operator())
 
     g = Graph(directed=True)
-    g.add_vertex(node=a, type=Iterable[float], itr_depth=1)
-    g.add_vertex(node=b, type=Iterable[float], itr_depth=1)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
 
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
     t_mock = mocker.MagicMock(spec=type_inspector)
@@ -276,8 +278,8 @@ def test_binary_op(operator, sym, mocker):
     op = ast.BinOp(left=a, right=b, op=operator())
 
     g = Graph(directed=True)
-    g.add_vertex(node=a, type=Iterable[float], itr_depth=1)
-    g.add_vertex(node=b, type=Iterable[float], itr_depth=1)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
 
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
     q_mock.new_var_name.return_value = 'e1000'
@@ -286,13 +288,13 @@ def test_binary_op(operator, sym, mocker):
     ast_to_graph(op, q_mock, g, t_mock)
 
     assert len(g.vs()) == 3
-    op_v = list(g.vs())[-1]
+    op_v = get_v_info(list(g.vs())[-1])
 
-    assert op_v['type'] == Iterable[float]
-    assert op_v['node'] is op
-    assert op_v['itr_depth'] == 1
+    assert op_v.v_type == Iterable[float]
+    assert op_v.node is op
+    assert op_v.level == 1
 
-    seq = op_v['seq']
+    seq = op_v.sequence
     assert isinstance(seq, sequence_transform)
     base = ObjectStream(ast.Name(id='dude'))
     assert MatchObjectSequence(base.Select(f"lambda e1000: e1000 {sym} e2000")) \

@@ -1,4 +1,5 @@
 import ast
+from hep_tables.graph_info import get_v_info, v_info
 from typing import Iterable, Optional, Type
 
 from dataframe_expressions.asts import ast_DataFrame
@@ -52,10 +53,11 @@ class _translate_to_sequence(ast.NodeVisitor):
         self.visit(node.value)
 
         v_source = _get_vertex_for_ast(self._g, node.value)
+        vs_meta = get_v_info(v_source)
 
         # Now, find a type which has the node on it. This is an implied loop, so we might have to dig
         # through some of the iterable layers to find it.
-        v_type = v_source['type']
+        v_type = vs_meta.v_type
         attr_type: Optional[Type] = None
         depth = 0
         while attr_type is None:
@@ -63,7 +65,7 @@ class _translate_to_sequence(ast.NodeVisitor):
             depth += 1
             if v_type is None:
                 # TODO: This might be an internal error, not a user error. Not totally sure.
-                raise FuncADLTablesException(f'Do not know how to apply "{node.attr}" on a sequence that is not iterable ({v_source["type"]})')
+                raise FuncADLTablesException(f'Do not know how to apply "{node.attr}" on a sequence that is not iterable ({vs_meta.v_type})')
 
             attr_type = self._t_inspect.attribute_type(v_type, node.attr)
 
@@ -81,11 +83,11 @@ class _translate_to_sequence(ast.NodeVisitor):
 
         # Code this up as a call, propagating the sequence return type.
         arg_name = self._qt.new_var_name()
-        sequence_ph = v_source['node']
+        sequence_ph = vs_meta.node
         function_call = ast.Call(func=ast.Attribute(value=ast.Name(id=arg_name), attr=node.attr), args=[], keywords=[])
         t = sequence_transform([sequence_ph], lambda_build(arg_name, function_call))
 
-        v = self._g.add_vertex(node=node, seq=t, type=seq_out_type, itr_depth=depth)
+        v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, node))
         self._g.add_edge(v, v_source, main_seq=True)
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
@@ -124,7 +126,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         s = sequence_transform([node.left, node.right], l_func)
 
         # Create the vertex and connect to a and b via edges
-        op_vertex = self._g.add_vertex(node=node, type=return_type, seq=s, itr_depth=level)
+        op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, node))
         self._g.add_edge(op_vertex, left, main_seq=True)
         self._g.add_edge(op_vertex, right, main_seq=False)
 
@@ -145,12 +147,13 @@ class _translate_to_sequence(ast.NodeVisitor):
         if not isinstance(df, xaod_table):
             raise FuncADLTablesException('func_adl_tables needs an xaod_table as the root')
 
-        self._g.add_vertex(node=node,
-                           type=Iterable[df.table_type],  # type: ignore
-                           seq=root_sequence_transform(df), itr_depth=1)
+        self._g.add_vertex(info=v_info(1,
+                                       root_sequence_transform(df),
+                                       Iterable[df.table_type],  # type: ignore
+                                       node))
 
 
 def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:
-    v_list = list(g.vs.select(lambda v: v['node'] is node))
+    v_list = list(g.vs.select(lambda v: get_v_info(v).node is node))
     assert len(v_list) == 1, f'Internal error: Should be only one node per vertex - found {len(v_list)}'
     return v_list[0]

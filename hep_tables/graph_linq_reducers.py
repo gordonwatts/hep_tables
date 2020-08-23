@@ -1,5 +1,6 @@
+from hep_tables.graph_info import copy_v_info, get_v_info, v_info
 from hep_tables.utils import QueryVarTracker
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 from collections import defaultdict
 
 from igraph import Graph, Vertex  # type:ignore
@@ -32,7 +33,7 @@ def find_highest_level(g: Graph) -> int:
     Returns:
         int: The level equal to the largest level.
     '''
-    return max(v['itr_depth'] for v in g.vs())
+    return max(get_v_info(v).level for v in g.vs())
 
 
 def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
@@ -44,10 +45,10 @@ def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
         qv (QueryVarTracker): New variable name generator
     '''
     assert level > 1, f'Internal programming error: cannot reduce level {level} - must be 2 or larger'
-    for v in (a_good_v for a_good_v in g.vs() if a_good_v['itr_depth'] == level):
-        new_seq = sequence_downlevel(v['seq'], qv.new_var_name())
-        v['seq'] = new_seq
-        v['itr_depth'] = level - 1
+    for v in (a_good_v for a_good_v in g.vs() if get_v_info(a_good_v).level == level):
+        vs_meta = get_v_info(v)
+        new_seq = sequence_downlevel(vs_meta.sequence, qv.new_var_name())
+        v['info'] = copy_v_info(vs_meta, new_sequence=new_seq, new_level=level - 1)
 
 
 def partition_by_parents(vs: List[Vertex]) -> List[List[Vertex]]:
@@ -78,16 +79,17 @@ def reduce_tuple_vertices(g: Graph, level: int):
     steps = list(depth_first_traversal(g))
     vertices_to_delete = []
     for grouping in steps:
-        level_group = [v for v in grouping if v['itr_depth'] == level]
+        level_group = [v for v in grouping if get_v_info(v).level == level]
         for p_group in partition_by_parents(level_group):
             if len(p_group) > 1:
                 transform_pairs = []
                 parent_vertices = []
                 child_vertices = []
                 ast_list = []
-                for v in sorted(p_group, key=lambda k: k['order']):
-                    transform_pairs.append((v['node'], v['seq']))
-                    ast_list.append(v['node'])
+                for v in sorted(p_group, key=lambda k: get_v_info(k).order):
+                    vs_meta = get_v_info(v)
+                    transform_pairs.append((vs_meta.node, vs_meta.sequence))
+                    ast_list.append(vs_meta.node)
 
                     # Delete the edges from this vertex into the graph, and replace them with the new ones
                     children = v.neighbors(mode='in')
@@ -101,7 +103,7 @@ def reduce_tuple_vertices(g: Graph, level: int):
                     vertices_to_delete.append(v)
 
                 new_seq = sequence_tuple(transform_pairs)
-                new_vertex = g.add_vertex(itr_depth=level, node=ast_list, seq=new_seq, order=0)
+                new_vertex = g.add_vertex(info=v_info(level=level, seq=new_seq, v_type=Any, node=ast_list, order=0))
                 g.add_edges([(new_vertex, p) for p in set(parent_vertices)])
                 g.add_edges([(p, new_vertex) for p in set(child_vertices)])
 

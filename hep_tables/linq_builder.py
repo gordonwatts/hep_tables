@@ -1,10 +1,11 @@
-from typing import Optional, Union, cast, Dict
+from hep_tables.graph_info import get_v_info
+from typing import Optional, Union, Dict
 import ast
 
 from func_adl.object_stream import ObjectStream
 from igraph import Graph
 
-from hep_tables.transforms import astIteratorPlaceholder, sequence_predicate_base
+from hep_tables.transforms import astIteratorPlaceholder
 from hep_tables.util_graph import depth_first_traversal
 
 
@@ -23,7 +24,8 @@ def build_linq_expression(exp_graph: Graph) -> ObjectStream:
         assert len(vertices_at_step) == 1, 'Internal error - only linear execution graphs supported'
         v = vertices_at_step[0]
 
-        build_sequence = cast(sequence_predicate_base, v['seq']).sequence(build_sequence, _as_dict(v['node']))
+        v_meta = get_v_info(v)
+        build_sequence = v_meta.sequence.sequence(build_sequence, _as_dict(v_meta.node))
 
     assert build_sequence is not None
     return build_sequence

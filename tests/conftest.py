@@ -1,4 +1,5 @@
 import ast
+from hep_tables.graph_info import v_info
 import logging
 import os
 import shutil
@@ -17,7 +18,7 @@ from servicex import ServiceXDataset, clean_linq
 
 import hep_tables.local as hep_local
 from hep_tables.hep_table import xaod_table
-from hep_tables.transforms import root_sequence_transform
+from hep_tables.transforms import root_sequence_transform, sequence_predicate_base
 from hep_tables.utils import QueryVarTracker
 
 # dump out logs
@@ -57,6 +58,15 @@ def servicex_ds(mocker):
     x.get_data_awkward_async.return_value = data
 
     return x
+
+
+def mock_vinfo(mocker, level: int = 0, node: ast.AST = None, seq: sequence_predicate_base = None, order: int = 0):
+    info = mocker.MagicMock(spec=v_info)
+    info.level = level
+    info.node = node
+    info.sequence = seq
+    info.order = order
+    return info
 
 
 def extract_selection(ds) -> str:

@@ -1,5 +1,6 @@
 import ast
-from typing import Dict
+from hep_tables.graph_info import v_info
+from typing import Any, Dict
 
 from igraph import Graph
 
@@ -30,7 +31,7 @@ def test_just_the_source(mock_root_sequence_transform):
 
     mine, a, root_seq = mock_root_sequence_transform
     g = Graph(directed=True)
-    g.add_vertex(node=a, seq=root_seq, itr_depth=1)
+    g.add_vertex(info=v_info(1, root_seq, Any, a))
 
     r = build_linq_expression(g)
     root_seq.sequence.assert_called_with(None, MatchASTDict({a: astIteratorPlaceholder()}))
@@ -41,13 +42,13 @@ def test_source_and_single_generator(mocker, mock_root_sequence_transform):
     '''Two sequence statements linked together'''
     mine, a1, root_seq = mock_root_sequence_transform
     g = Graph(directed=True)
-    level_0 = g.add_vertex(node=a1, seq=root_seq, itr_depth=1)
+    level_0 = g.add_vertex(info=v_info(1, root_seq, Any, a1))
 
     a2 = ast.Constant(10)
     seq_met = mocker.MagicMock(spec=sequence_transform)
     proper_return = mine.Select("lambda e1: e1.met")
     seq_met.sequence.return_value = proper_return
-    level_1 = g.add_vertex(node=a2, seq=seq_met, itr_depth=1)
+    level_1 = g.add_vertex(info=v_info(1, seq_met, Any, a2))
 
     g.add_edge(level_1, level_0, main_seq=True)
 
