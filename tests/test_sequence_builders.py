@@ -1,5 +1,5 @@
 import ast
-from hep_tables.graph_info import get_v_info, v_info
+from hep_tables.graph_info import get_e_info, get_v_info, v_info
 
 from dataframe_expressions.data_frame import DataFrame
 from hep_tables.exceptions import FuncADLTablesException
@@ -114,7 +114,7 @@ def test_attribute_known_list(mocker):
     assert len(edges) == 1
 
     e1 = edges[0]
-    assert e1['main_seq'] is True
+    assert get_e_info(e1).main is True
     assert e1.target_vertex == a_vtx
 
     t_mock.attribute_type.assert_called_once()
@@ -229,7 +229,7 @@ def test_attribute_implied_loop(mocker):
     assert len(edges) == 1
 
     e1 = edges[0]
-    assert e1['main_seq'] is True
+    assert get_e_info(e1).main is True
     assert e1.target_vertex == a_vtx
 
     attr_vtx = get_v_info(e1.source_vertex)

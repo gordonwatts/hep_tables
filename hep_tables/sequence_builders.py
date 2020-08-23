@@ -1,5 +1,5 @@
 import ast
-from hep_tables.graph_info import get_v_info, v_info
+from hep_tables.graph_info import e_info, get_v_info, v_info
 from typing import Iterable, Optional, Type
 
 from dataframe_expressions.asts import ast_DataFrame
@@ -88,7 +88,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         t = sequence_transform([sequence_ph], lambda_build(arg_name, function_call))
 
         v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, node))
-        self._g.add_edge(v, v_source, main_seq=True)
+        self._g.add_edge(v, v_source, info=e_info(True))
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         '''Process a python binary operator. We support:
@@ -127,8 +127,8 @@ class _translate_to_sequence(ast.NodeVisitor):
 
         # Create the vertex and connect to a and b via edges
         op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, node))
-        self._g.add_edge(op_vertex, left, main_seq=True)
-        self._g.add_edge(op_vertex, right, main_seq=False)
+        self._g.add_edge(op_vertex, left, info=e_info(True))
+        self._g.add_edge(op_vertex, right, info=e_info(False))
 
     def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:
         '''Visit a root of the tree. This will form the basis of all of the graph.

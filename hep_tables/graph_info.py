@@ -1,5 +1,5 @@
 from typing import Optional, Type, cast
-from igraph import Vertex  # type: ignore
+from igraph import Vertex, Edge  # type: ignore
 import ast
 from .transforms import sequence_predicate_base
 
@@ -70,6 +70,22 @@ class v_info:
         return self._order
 
 
+class e_info:
+    '''Metadata attached with a vertex Edge.
+    '''
+    def __init__(self, main_seq: bool):
+        self._main = main_seq
+
+    @property
+    def main(self) -> bool:
+        '''Returns indicator if this edge is meant to be the main sequence (or not)
+
+        Returns:
+            bool: True if this edge represents the main sequence.
+        '''
+        return self._main
+
+
 def get_v_info(v: Vertex) -> v_info:
     '''Return the vertex metadata attached to the vertex
 
@@ -91,3 +107,15 @@ def copy_v_info(old: v_info, new_level: Optional[int] = None, new_sequence: Opti
     new_type = old.v_type
 
     return v_info(new_level, new_seq, new_type, new_node, new_order)
+
+
+def get_e_info(e: Edge) -> e_info:
+    '''Return the edge metadata.
+
+    Args:
+        v (Edge): Edge we should extract the metadata from
+
+    Returns:
+        e_info: The Edge metadata
+    '''
+    return cast(e_info, e['info'])

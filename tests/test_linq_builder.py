@@ -1,5 +1,5 @@
 import ast
-from hep_tables.graph_info import v_info
+from hep_tables.graph_info import e_info, v_info
 from typing import Any, Dict
 
 from igraph import Graph
@@ -50,7 +50,7 @@ def test_source_and_single_generator(mocker, mock_root_sequence_transform):
     seq_met.sequence.return_value = proper_return
     level_1 = g.add_vertex(info=v_info(1, seq_met, Any, a2))
 
-    g.add_edge(level_1, level_0, main_seq=True)
+    g.add_edge(level_1, level_0, info=e_info(True))
 
     r = build_linq_expression(g)
 

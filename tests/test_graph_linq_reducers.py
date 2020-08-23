@@ -1,5 +1,5 @@
 import ast
-from hep_tables.graph_info import get_v_info
+from hep_tables.graph_info import e_info, get_v_info
 
 from igraph import Graph
 
@@ -33,7 +33,7 @@ def test_downlevel_one(mocker, mock_root_sequence_transform, mock_qt):
     a2_1 = ast.Constant(10)
     seq_met = mocker.MagicMock(spec=sequence_transform)
     level_1_1 = g.add_vertex(info=mock_vinfo(mocker, node=a2_1, seq=seq_met, order=0, level=2))
-    g.add_edge(level_1_1, level_0, main_seq=True)
+    g.add_edge(level_1_1, level_0, info=e_info(True))
 
     reduce_level(g, 2, mock_qt)
     assert len(g.vs()) == 2
@@ -55,12 +55,12 @@ def test_downlevel_one_sequence(mocker, mock_root_sequence_transform, mock_qt):
     a2_1 = ast.Constant(10)
     seq_met = mocker.MagicMock(spec=sequence_transform)
     level_1_1 = g.add_vertex(info=mock_vinfo(mocker, node=a2_1, seq=seq_met, order=0, level=2))
-    g.add_edge(level_1_1, level_0, main_seq=True)
+    g.add_edge(level_1_1, level_0, info=e_info(True))
 
     a3_1 = ast.Constant(10)
     seq_met_1 = mocker.MagicMock(spec=sequence_transform)
     level_2_1 = g.add_vertex(info=mock_vinfo(mocker, node=a3_1, seq=seq_met_1, order=0, level=2))
-    g.add_edge(level_2_1, level_1_1, main_seq=True)
+    g.add_edge(level_2_1, level_1_1, info=e_info(True))
 
     reduce_level(g, 2, mock_qt)
     assert len(g.vs()) == 3
@@ -77,7 +77,7 @@ def test_reduce_vertices_separate_steps(mocker):
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, seq=mocker.MagicMock(spec=sequence_transform)))
 
-    g.add_edge(level_2, level_1, main_seq=True)
+    g.add_edge(level_2, level_1, info=e_info(True))
 
     reduce_tuple_vertices(g, 2)
 
@@ -92,11 +92,11 @@ def test_reduce_vertices_simple_dependency(mocker):
 
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, order=0, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_2, level_1, main_seq=True)
+    g.add_edge(level_2, level_1, info=e_info(True))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, order=1, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_3, level_1, main_seq=True)
+    g.add_edge(level_3, level_1, info=e_info(True))
 
     reduce_tuple_vertices(g, 2)
 
@@ -137,19 +137,19 @@ def test_reduce_vertices_separate_dependency(mocker):
 
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_2, level_1, main_seq=True)
+    g.add_edge(level_2, level_1, info=e_info(True))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_3, level_1, main_seq=True)
+    g.add_edge(level_3, level_1, info=e_info(True))
 
     a_4 = ast.Constant(1)
     level_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_4, level_2, main_seq=True)
+    g.add_edge(level_4, level_2, info=e_info(True))
 
     a_5 = ast.Constant(1)
     level_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_5, level_3, main_seq=True)
+    g.add_edge(level_5, level_3, info=e_info(True))
 
     reduce_tuple_vertices(g, 2)
 
@@ -164,11 +164,11 @@ def test_reduce_vertices_wrong_level(mocker):
 
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_2, level_1, main_seq=True)
+    g.add_edge(level_2, level_1, info=e_info(True))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_3, level_1, main_seq=True)
+    g.add_edge(level_3, level_1, info=e_info(True))
 
     reduce_tuple_vertices(g, 3)
 
@@ -183,19 +183,19 @@ def test_reduce_vertices_sequential_reduction(mocker):
 
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, order=1, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_2, level_1, main_seq=True)
+    g.add_edge(level_2, level_1, info=e_info(True))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, order=2, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_3, level_1, main_seq=True)
+    g.add_edge(level_3, level_1, info=e_info(True))
 
     a_4 = ast.Constant(1)
     level_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, order=3, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_4, level_2, main_seq=True)
+    g.add_edge(level_4, level_2, info=e_info(True))
 
     a_5 = ast.Constant(1)
     level_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=4, seq=mocker.MagicMock(spec=sequence_transform)))
-    g.add_edge(level_5, level_3, main_seq=True)
+    g.add_edge(level_5, level_3, info=e_info(True))
 
     reduce_tuple_vertices(g, 2)
 
