@@ -1,4 +1,3 @@
-import collections
 import inspect
 from typing import Callable, Iterable, List, Optional, Set, Tuple, Type, Union
 
