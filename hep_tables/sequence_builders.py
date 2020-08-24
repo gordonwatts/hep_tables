@@ -1,12 +1,11 @@
 import ast
-from hep_tables.graph_info import e_info, get_v_info, v_info
 from typing import Iterable, Optional, Type
 
 from dataframe_expressions.asts import ast_DataFrame
-from func_adl.util_ast import lambda_build
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
+from hep_tables.graph_info import e_info, get_v_info, v_info
 from hep_tables.hep_table import xaod_table
 from hep_tables.transforms import root_sequence_transform, sequence_transform
 from hep_tables.type_info import type_inspector
@@ -83,9 +82,8 @@ class _translate_to_sequence(ast.NodeVisitor):
 
         # Code this up as a call, propagating the sequence return type.
         arg_name = self._qt.new_var_name()
-        sequence_ph = vs_meta.node
-        function_call = ast.Call(func=ast.Attribute(value=ast.Name(id=arg_name), attr=node.attr), args=[], keywords=[])
-        t = sequence_transform([sequence_ph], lambda_build(arg_name, function_call))
+        function_call = ast.Call(func=ast.Attribute(value=node.value, attr=node.attr), args=[], keywords=[])
+        t = sequence_transform([node.value], arg_name, function_call)
 
         v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, node))
         self._g.add_edge(v, v_source, info=e_info(True))
@@ -121,9 +119,8 @@ class _translate_to_sequence(ast.NodeVisitor):
 
         # And build the statement that will do the transform.
         l_arg = self._qt.new_var_name()
-        l_func_body = ast.BinOp(left=ast.Name(id=l_arg), op=node.op, right=node.right)
-        l_func = lambda_build(l_arg, l_func_body)
-        s = sequence_transform([node.left, node.right], l_func)
+        l_func_body = ast.BinOp(left=node.left, op=node.op, right=node.right)
+        s = sequence_transform([node.left, node.right], l_arg, l_func_body)
 
         # Create the vertex and connect to a and b via edges
         op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, node))

@@ -34,7 +34,7 @@ def test_just_the_source(mock_root_sequence_transform):
     g.add_vertex(info=v_info(1, root_seq, Any, a))
 
     r = build_linq_expression(g)
-    root_seq.sequence.assert_called_with(None, MatchASTDict({a: astIteratorPlaceholder()}))
+    root_seq.sequence.assert_called_with(None, {})
     assert r is mine
 
 
@@ -55,4 +55,4 @@ def test_source_and_single_generator(mocker, mock_root_sequence_transform):
     r = build_linq_expression(g)
 
     assert r is proper_return
-    seq_met.sequence.assert_called_with(mine, MatchASTDict({a2: astIteratorPlaceholder()}))
+    seq_met.sequence.assert_called_with(mine, MatchASTDict({a1: astIteratorPlaceholder()}))

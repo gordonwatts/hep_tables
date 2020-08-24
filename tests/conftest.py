@@ -18,7 +18,7 @@ from servicex import ServiceXDataset, clean_linq
 
 import hep_tables.local as hep_local
 from hep_tables.hep_table import xaod_table
-from hep_tables.transforms import root_sequence_transform, sequence_predicate_base
+from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_predicate_base
 from hep_tables.utils import QueryVarTracker
 
 # dump out logs
@@ -64,6 +64,7 @@ def mock_vinfo(mocker, level: int = 0, node: ast.AST = None, seq: sequence_predi
     info = mocker.MagicMock(spec=v_info)
     info.level = level
     info.node = node
+    info.node_as_dict = {node: astIteratorPlaceholder()}
     info.sequence = seq
     info.order = order
     return info
@@ -110,6 +111,8 @@ class MatchAST:
         if true_ast != other_ast:
             print(f'true: {true_ast}')
             print(f'test: {other_ast}')
+            return False
+        return True
 
 
 class MatchObjectSequence:

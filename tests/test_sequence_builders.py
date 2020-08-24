@@ -128,7 +128,7 @@ def test_attribute_known_list(mocker):
     assert isinstance(seq, sequence_transform)
 
     base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: e1000.AFloat()")) == seq.sequence(base, {})
+    assert MatchObjectSequence(base.Select("lambda e1000: e1000.AFloat()")) == seq.sequence(base, {a: ast.Name(id='e1000')})
 
 
 def test_attribute_non_iterable_object(mocker):
@@ -240,7 +240,7 @@ def test_attribute_implied_loop(mocker):
     assert isinstance(seq, sequence_transform)
 
     base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: e1000.pt()")) == seq.sequence(base, {})
+    assert MatchObjectSequence(base.Select("lambda e1000: e1000.pt()")) == seq.sequence(base, {a: ast.Name(id='e1000')})
 
 
 @pytest.mark.parametrize("operator", [ast.FloorDiv, ast.LShift, ast.RShift, ast.BitOr, ast.BitXor, ast.BitAnd, ast.MatMult])

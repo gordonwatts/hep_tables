@@ -20,12 +20,14 @@ def build_linq_expression(exp_graph: Graph) -> ObjectStream:
     # Loop over the sequence, generating Select and Where statements
     # at the top level
     build_sequence: Optional[ObjectStream] = None
+    ast_dict: Dict[ast.AST, ast.AST] = {}
     for vertices_at_step in depth_first_traversal(exp_graph):
         assert len(vertices_at_step) == 1, 'Internal error - only linear execution graphs supported'
         v = vertices_at_step[0]
 
         v_meta = get_v_info(v)
-        build_sequence = v_meta.sequence.sequence(build_sequence, _as_dict(v_meta.node))
+        build_sequence = v_meta.sequence.sequence(build_sequence, ast_dict)
+        ast_dict = v_meta.node_as_dict
 
     assert build_sequence is not None
     return build_sequence

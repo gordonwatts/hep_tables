@@ -1,13 +1,13 @@
-from typing import Optional, Type, cast
+from typing import Dict, Optional, Type, cast, Union
 from igraph import Vertex, Edge  # type: ignore
 import ast
-from .transforms import sequence_predicate_base
+from .transforms import astIteratorPlaceholder, sequence_predicate_base
 
 
 class v_info:
     '''Information attached to a vertex
     '''
-    def __init__(self, level: int, seq: sequence_predicate_base, v_type: Type, node: ast.AST, order: int = 0):
+    def __init__(self, level: int, seq: sequence_predicate_base, v_type: Type, node: Union[ast.AST, Dict[ast.AST, ast.AST]], order: int = 0):
         '''Create an object to hold the metadata associated with a vertex in our processing graph.
 
         Args:
@@ -19,7 +19,7 @@ class v_info:
         self._level = level
         self._seq = seq
         self._type = v_type
-        self._node = node
+        self._node: Dict[ast.AST, ast.AST] = {node: astIteratorPlaceholder()} if isinstance(node, ast.AST) else node
         self._order = order
 
     def __eq__(self, o: object) -> bool:
@@ -58,7 +58,8 @@ class v_info:
         Returns:
             ast.AST: The `ast` representation
         '''
-        return self._node
+        assert len(self._node) == 1, 'Internal error: cannot get single node for vertex that represents more than one'
+        return list(self._node.items())[0][0]
 
     @property
     def order(self) -> int:
@@ -68,6 +69,10 @@ class v_info:
             int: Integer order. Lower means higher priority
         '''
         return self._order
+
+    @property
+    def node_as_dict(self) -> Dict[ast.AST, ast.AST]:
+        return self._node
 
 
 class e_info:
@@ -103,7 +108,7 @@ def copy_v_info(old: v_info, new_level: Optional[int] = None, new_sequence: Opti
     new_seq = old.sequence if new_sequence is None else new_sequence
 
     new_order = old.order
-    new_node = old.node
+    new_node = old.node_as_dict
     new_type = old.v_type
 
     return v_info(new_level, new_seq, new_type, new_node, new_order)

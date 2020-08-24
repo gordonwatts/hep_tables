@@ -50,8 +50,9 @@ class sequence_transform(sequence_predicate_base):
     '''
     def __init__(self,
                  dependent_asts: List[ast.AST],
-                 function: ast.Lambda):
-        '''Transforms a sequence with the lambda implied by the `function` argument.
+                 var_name: str,
+                 function_body: ast.AST):
+        '''Transforms a sequence with the expression implied by the `function` argument.
 
         TODO: Do we care about `dependent_asts`?
 
@@ -60,30 +61,44 @@ class sequence_transform(sequence_predicate_base):
                                                 replaced in the `function` `ast` during rendering by references to
                                                 the stream or monads.
 
-            function (ast.AST):                 The ast that represents a Lambda function (must start with ast.Lambda).
+            function_body (ast.AST):                 The ast that represents a Lambda function (must start with ast.Lambda).
                                                 The argument should already be unique.
+
+            var_name (str):                     Variable name we should use in the `lambda` we have to construct
 
         Notes:
         '''
-        self._function = function
+        self._function_body = function_body
         self._dependent_asts = dependent_asts
+        self._var_name = var_name
 
     def sequence(self, sequence: Optional[ObjectStream],
                  seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
         '''
         Return a Select statement around the function we are given.
         '''
+        # Replace the arguments in the dict
+        class replace_with_name(CloningNodeTransformer):
+            def __init__(self, a: ast.AST):
+                self._replace = a
+
+            def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> ast.AST:
+                return self._replace
+
+        replacer = replace_with_name(ast.Name(id=self._var_name))
+        replaced_dict = {k: replacer.visit(v) for k, v in seq_dict.items()}
+
         # Replace the arguments in the function
         class replace_ast(CloningNodeTransformer):
             def generic_visit(self, node: ast.AST) -> Optional[ast.AST]:
-                if node in seq_dict:
-                    return seq_dict[node]
+                if node in replaced_dict:
+                    return replaced_dict[node]
                 return super().generic_visit(node)
 
-        replaced = replace_ast().visit(self._function)
+        replaced = replace_ast().visit(self._function_body)
 
         # Return the call
-        return sequence.Select(replaced)
+        return sequence.Select(lambda_build(self._var_name, replaced))
 
 
 class sequence_tuple(sequence_predicate_base):

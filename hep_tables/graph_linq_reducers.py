@@ -1,3 +1,4 @@
+import ast
 from hep_tables.graph_info import copy_v_info, get_v_info, v_info
 from hep_tables.utils import QueryVarTracker
 from typing import Any, Dict, List, Tuple
@@ -5,7 +6,7 @@ from collections import defaultdict
 
 from igraph import Graph, Vertex  # type:ignore
 
-from hep_tables.transforms import sequence_downlevel, sequence_tuple
+from hep_tables.transforms import astIteratorPlaceholder, sequence_downlevel, sequence_tuple
 from hep_tables.util_graph import depth_first_traversal
 
 
@@ -85,11 +86,11 @@ def reduce_tuple_vertices(g: Graph, level: int):
                 transform_pairs = []
                 parent_vertices = []
                 child_vertices = []
-                ast_list = []
-                for v in sorted(p_group, key=lambda k: get_v_info(k).order):
+                ast_list = {}
+                for index, v in enumerate(sorted(p_group, key=lambda k: get_v_info(k).order)):
                     vs_meta = get_v_info(v)
                     transform_pairs.append((vs_meta.node, vs_meta.sequence))
-                    ast_list.append(vs_meta.node)
+                    ast_list[vs_meta.node] = ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=index))
 
                     # Delete the edges from this vertex into the graph, and replace them with the new ones
                     children = v.neighbors(mode='in')

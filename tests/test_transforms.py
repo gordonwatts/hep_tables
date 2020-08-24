@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from func_adl.event_dataset import EventDataset
 from func_adl.object_stream import ObjectStream
-from func_adl.util_ast import lambda_unwrap
+from func_adl.util_ast import lambda_body
 
 from hep_tables.hep_table import xaod_table
 from hep_tables.transforms import (root_sequence_transform, sequence_downlevel,
@@ -27,11 +27,11 @@ def test_sequence_predicate_base():
 
 
 def test_seq_trans_null():
-    sequence_transform([ast.Num(20)], lambda_unwrap(ast.parse("lambda a: 20")))
+    sequence_transform([ast.Num(20)], "a", lambda_body(ast.parse("lambda a: 20")))
 
 
 def test_seq_trans_no_args():
-    s = sequence_transform([], lambda_unwrap(ast.parse("lambda a: 20")))
+    s = sequence_transform([], "a", lambda_body(ast.parse("lambda a: 20")))
     base_seq = ObjectStream(ast.Name(id='dude'))
     new_seq = s.sequence(base_seq, {})
     assert MatchObjectSequence(base_seq.Select("lambda a: 20")) == new_seq
@@ -39,7 +39,7 @@ def test_seq_trans_no_args():
 
 def test_seq_trans_one_args_no_repl():
     a = ast.Num(10)
-    s = sequence_transform([a], lambda_unwrap(ast.parse("lambda a: 20")))
+    s = sequence_transform([a], "a", lambda_body(ast.parse("lambda a: 20")))
     base_seq = ObjectStream(ast.Name(id='dude'))
     new_seq = s.sequence(base_seq, {a: ast.Num(30)})
     assert MatchObjectSequence(base_seq.Select("lambda a: 20")) == new_seq
@@ -47,9 +47,7 @@ def test_seq_trans_one_args_no_repl():
 
 def test_seq_trans_one_args():
     a = ast.Num(10)
-    lm = lambda_unwrap(ast.parse("lambda b: 10"))
-    lm.body = a
-    s = sequence_transform([a], lm)
+    s = sequence_transform([a], 'b', a)
     base_seq = ObjectStream(ast.Name(id='dude'))
     new_seq = s.sequence(base_seq, {a: ast.Num(30)})
     assert MatchObjectSequence(base_seq.Select("lambda b: 30")) == new_seq

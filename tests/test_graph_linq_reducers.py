@@ -5,9 +5,9 @@ from igraph import Graph
 
 from hep_tables.graph_linq_reducers import (find_highest_level, reduce_level,
                                             reduce_tuple_vertices)
-from hep_tables.transforms import (sequence_downlevel, sequence_transform,
+from hep_tables.transforms import (astIteratorPlaceholder, sequence_downlevel, sequence_transform,
                                    sequence_tuple)
-from .conftest import mock_vinfo
+from .conftest import MatchAST, mock_vinfo
 
 
 def test_level_one_node(mocker):
@@ -115,9 +115,9 @@ def test_reduce_vertices_simple_dependency(mocker):
     assert v_2_md.level == 2
 
     assert v_1_md.node is a_1
-    assert len(v_2_md.node) == 2
-    assert v_2_md.node[0] is a_2
-    assert v_2_md.node[1] is a_3
+    assert len(v_2_md.node_as_dict) == 2
+    assert MatchAST(ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=0))) == v_2_md.node_as_dict[a_2]
+    assert MatchAST(ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=1))) == v_2_md.node_as_dict[a_3]
 
     assert isinstance(v_1_md.sequence, sequence_transform)
     seq = v_2_md.sequence
