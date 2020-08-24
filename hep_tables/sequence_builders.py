@@ -1,5 +1,5 @@
 import ast
-from typing import Iterable, Optional, Type
+from typing import Iterable, Optional, Type, Union
 
 from dataframe_expressions.asts import ast_DataFrame
 from igraph import Graph, Vertex  # type: ignore
@@ -109,13 +109,27 @@ class _translate_to_sequence(ast.NodeVisitor):
         self.visit(node.right)
 
         left = _get_vertex_for_ast(self._g, node.left)
+        left_meta = get_v_info(left)
         right = _get_vertex_for_ast(self._g, node.right)
+        right_meta = get_v_info(right)
 
         # What level will this be operating at?
-        level = 1
+        func_info = self._t_inspect.find_broadcast_level_for_args((Union[float, int], Union[float, int]),
+                                                                  (left_meta.v_type, right_meta.v_type))
+        if func_info is None:
+            raise FuncADLTablesException(f'Unable to figure out how to {left_meta.v_type} {node.op} {right_meta.v_type}.')
+
+        level, (l_type, r_type) = func_info
 
         # Figure out the return type given the types of these two
-        return_type = Iterable[float]
+        if (l_type == float) or (r_type == float):
+            return_type = float
+        elif isinstance(node.op, ast.Div):
+            return_type = float
+        else:
+            return_type = int
+        for i in range(level):
+            return_type = Iterable[return_type]
 
         # And build the statement that will do the transform.
         l_arg = self._qt.new_var_name()

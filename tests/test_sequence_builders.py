@@ -8,7 +8,7 @@ from func_adl import ObjectStream
 
 from dataframe_expressions.asts import ast_DataFrame
 from hep_tables import xaod_table
-from typing import Callable, Iterable, List, Optional, Type
+from typing import Callable, Iterable, List, Optional, Type, Union
 
 import pytest
 from igraph import Graph
@@ -284,6 +284,7 @@ def test_binary_op(operator, sym, mocker):
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
     q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
 
     ast_to_graph(op, q_mock, g, t_mock)
 
@@ -299,3 +300,102 @@ def test_binary_op(operator, sym, mocker):
     base = ObjectStream(ast.Name(id='dude'))
     assert MatchObjectSequence(base.Select(f"lambda e1000: e1000 {sym} e2000")) \
         == seq.sequence(base, {a: astIteratorPlaceholder(), b: ast.Name(id='e2000')})
+
+
+def test_binary_two_levels_down(mocker):
+    'Test binary operator: Iterable[Iterable[float]] + Iterable[Iterable[float]]'
+    a = ast.Num('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=ast.Add())
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], a))
+    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], b))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = (2, (float, float))
+
+    ast_to_graph(op, q_mock, g, t_mock)
+
+    assert len(g.vs()) == 3
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[Iterable[float]]
+    assert op_v.node is op
+    assert op_v.level == 2
+
+    seq = op_v.sequence
+    assert isinstance(seq, sequence_transform)
+    base = ObjectStream(ast.Name(id='dude'))
+    assert MatchObjectSequence(base.Select("lambda e1000: e1000 + e2000")) \
+        == seq.sequence(base, {a: astIteratorPlaceholder(), b: ast.Name(id='e2000')})
+    t_mock.find_broadcast_level_for_args.assert_called_with((Union[float, int], Union[float, int]),
+                                                            (Iterable[Iterable[float]], Iterable[Iterable[float]]))
+
+
+def test_binary_bad_type(mocker):
+    'Test binary operator: Iterable[Iterable[float]] + Iterable[Iterable[Jet]]'
+    a = ast.Num('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=ast.Add())
+
+    class Jet:
+        pass
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], a))
+    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[Jet]], b))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, q_mock, g, t_mock)
+
+    assert 'Unable to figure out' in str(e)
+
+
+@pytest.mark.parametrize("t_left, operator, t_right, t_result", [
+                         (float, ast.Add, float, float),
+                         (float, ast.Add, int, float),
+                         (int, ast.Add, int, int),
+                         (float, ast.Sub, float, float),
+                         (float, ast.Sub, int, float),
+                         (int, ast.Sub, int, int),
+                         (float, ast.Mult, float, float),
+                         (float, ast.Mult, int, float),
+                         (int, ast.Mult, int, int),
+                         (float, ast.Div, float, float),
+                         (float, ast.Div, int, float),
+                         (int, ast.Div, int, float),
+                         (float, ast.Mod, float, float),
+                         (float, ast.Mod, int, float),
+                         (int, ast.Mod, int, int),
+                         (float, ast.Pow, float, float),
+                         (float, ast.Pow, int, float),
+                         (int, ast.Pow, int, int),
+                         ])
+def test_binary_types(t_left, operator, t_right, t_result, mocker):
+    'Test binary operator return types int + float = float, etc.'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=operator())
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[t_left], a))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[t_right], b))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = (1, (t_left, t_right))
+
+    ast_to_graph(op, q_mock, g, t_mock)
+
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[t_result]
