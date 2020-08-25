@@ -414,7 +414,7 @@ def test_function_single_arg(mocker):
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float))
+    t_mock.find_broadcast_level_for_args.return_value = (1, (float,))
 
     ast_to_graph(c, q_mock, g, t_mock)
 
@@ -431,6 +431,41 @@ def test_function_single_arg(mocker):
     assert MatchObjectSequence(base.Select("lambda e1000: my_func(e1000)")) \
         == seq.sequence(base, {a: astIteratorPlaceholder()})
 
+    t_mock.static_function_type.assert_called_with(g['info'].global_types, "my_func")
+
+
+def test_function_two_arg(mocker):
+    a = ast.Name('a')
+    b = ast.Name('b')
+    c = ast.Call(func=ast.Name(id='my_func'), args=[a, b], keywords=[])
+
+    g = Graph(directed=True)
+    g['info'] = g_info([])
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = Callable[[float, float], float]
+    t_mock.callable_type.return_value = ([float, float], float)
+    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+
+    ast_to_graph(c, q_mock, g, t_mock)
+
+    assert len(g.vs()) == 3
+    call_v = get_v_info(list(g.vs())[-1])
+
+    assert call_v.v_type == Iterable[float]
+    assert call_v.node is c
+    assert call_v.level == 1
+
+    seq = call_v.sequence
+    assert isinstance(seq, sequence_transform)
+    base = ObjectStream(ast.Name(id='dude'))
+    assert MatchObjectSequence(base.Select("lambda e1000: my_func(e1000, e2000)")) \
+        == seq.sequence(base, {a: astIteratorPlaceholder(), b: ast.Name(id='e2000')})
+
 
 def test_function_single_arg_level2(mocker):
     a = ast.Name('a')
@@ -445,7 +480,7 @@ def test_function_single_arg_level2(mocker):
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
-    t_mock.find_broadcast_level_for_args.return_value = (2, (float))
+    t_mock.find_broadcast_level_for_args.return_value = (2, (float,))
 
     ast_to_graph(c, q_mock, g, t_mock)
 
@@ -484,7 +519,7 @@ def test_function_wrong_level(mocker):
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
-    t_mock.find_broadcast_level_for_args.return_value = (2, (float))
+    t_mock.find_broadcast_level_for_args.return_value = (2, (float,))
 
     with pytest.raises(FuncADLTablesException) as e:
         ast_to_graph(c, q_mock, g, t_mock)
