@@ -1,5 +1,5 @@
-from typing import Dict, Optional, Type, cast, Union
-from igraph import Vertex, Edge  # type: ignore
+from typing import Dict, List, Optional, Type, cast, Union
+from igraph import Graph, Vertex, Edge  # type: ignore
 import ast
 from .transforms import astIteratorPlaceholder, sequence_predicate_base
 
@@ -91,6 +91,28 @@ class e_info:
         return self._main
 
 
+class g_info:
+    '''Metadata associated with the Graph object
+    '''
+    def __init__(self, global_types: List[Type]):
+        '''Initialize the global graph metadata.
+
+        Args:
+            global_types (List[Type]): List of types that are active at the global level. They are
+            scanned for functions, for example, that can be called at the global level.
+        '''
+        self._global_types = global_types
+
+    @property
+    def global_types(self) -> List[Type]:
+        '''List of types that are known at the global level
+
+        Returns:
+            List[Type]: List of types known at the global level
+        '''
+        return self._global_types
+
+
 def get_v_info(v: Vertex) -> v_info:
     '''Return the vertex metadata attached to the vertex
 
@@ -124,3 +146,15 @@ def get_e_info(e: Edge) -> e_info:
         e_info: The Edge metadata
     '''
     return cast(e_info, e['info'])
+
+
+def get_g_info(g: Graph) -> g_info:
+    '''Return the graph metadata
+
+    Args:
+        e (Graph): The Graph
+
+    Returns:
+        g_info: The Graph metadata
+    '''
+    return cast(g_info, g['info'])

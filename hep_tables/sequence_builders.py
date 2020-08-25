@@ -1,11 +1,11 @@
 import ast
-from typing import Iterable, Optional, Type, Union
+from typing import Iterable, List, Optional, Type, Union, cast
 
 from dataframe_expressions.asts import ast_DataFrame
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
-from hep_tables.graph_info import e_info, get_v_info, v_info
+from hep_tables.graph_info import e_info, get_g_info, get_v_info, v_info
 from hep_tables.hep_table import xaod_table
 from hep_tables.transforms import root_sequence_transform, sequence_transform
 from hep_tables.type_info import type_inspector
@@ -128,6 +128,7 @@ class _translate_to_sequence(ast.NodeVisitor):
             return_type = float
         else:
             return_type = int
+
         for i in range(level):
             return_type = Iterable[return_type]
 
@@ -163,6 +164,55 @@ class _translate_to_sequence(ast.NodeVisitor):
                                        Iterable[df.table_type],  # type: ignore
                                        node))
 
+    def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Name):
+            self.visit_Call_Name(node, node.func)
+        else:
+            assert False, f'Internal programming error - cannot call {node.func}.'
+
+    def visit_Call_Name(self, node: ast.Call, func: ast.Name) -> None:
+        '''Process a function call. Use the global type system to figure out what the
+        types is/are.
+
+        Args:
+            node (ast.Call): [description]
+            func (ast.Name): [description]
+        '''
+        # We have to get the type info for the call
+        func_type_info = self._t_inspect.static_function_type(get_g_info(self._g).global_types, func.id)
+        if func_type_info is None:
+            raise FuncADLTablesException(f'Function "{func.id}" is not defined."')
+        arg_types, return_type = self._t_inspect.callable_type(func_type_info)
+        if arg_types is None or return_type is None:
+            raise FuncADLTablesException(f'Function "{func.id}" is not defined as being callable!')
+
+        # Evaluate the arguments so we can get their types.
+        for a in node.args:
+            self.visit(a)
+        arg_vtx = [_get_vertex_for_ast(self._g, a) for a in node.args]
+        arg_meta = [get_v_info(a) for a in arg_vtx]
+
+        level_type_info = self._t_inspect.find_broadcast_level_for_args(arg_types, [m.v_type for m in arg_meta])
+        if level_type_info is None:
+            raise FuncADLTablesException(f'Do not know how to call {func.id}({arg_types}) with given argument ({[m.v_type for m in arg_meta]})')
+        level, actual_args = level_type_info
+        if not all(level == m.level for m in arg_meta):
+            raise FuncADLTablesException(f'In order to call {func.id}({arg_types}), all items need to have the same number of array dimensions.')
+
+        # Ok - since this works, lets build the function.
+        seq = sequence_transform(cast(List[ast.AST], node.args), self._qt.new_var_name(), node)
+        for i in range(level):
+            return_type = Iterable[return_type]  # type: ignore
+        v_i = v_info(level, seq, return_type, node)
+        new_v = self._g.add_vertex(info=v_i)
+
+        main_seq = True
+        for v in arg_vtx:
+            self._g.add_edge(new_v, v, info=e_info(main_seq))
+            main_seq = False
+
+
+# TODO: Can we optimize this Call_Name or refactor it with some similar code in other places?
 
 def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:
     v_list = list(g.vs.select(lambda v: get_v_info(v).node is node))

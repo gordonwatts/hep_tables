@@ -39,6 +39,20 @@ class type_inspector:
         rtn_type = sig.return_annotation
         return Callable[args, rtn_type]  # type: ignore
 
+    def static_function_type(self, type_search_list: List[Type], func_name: str) -> Optional[Type]:
+        '''Return the type info for a function/attribute attached to a global type.
+
+        Args:
+            type_search_list (List[Type]): The set of type contexts (types) searched, in order, for a static
+            function.
+
+            func_name (str): The name of the function to search for
+
+        Returns:
+            Optional[Type]: None if the function was not found, otherwise return the type of the function.
+        '''
+        raise NotImplementedError()
+
     def iterable_object(self, i_type: Type) -> Optional[Type]:
         '''If `i_type` is `Iterable[X]`, then return `x`, otherwise return None.
 

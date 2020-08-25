@@ -1,5 +1,5 @@
 import ast
-from hep_tables.graph_info import get_e_info, get_v_info, v_info
+from hep_tables.graph_info import g_info, get_e_info, get_v_info, v_info
 
 from dataframe_expressions.data_frame import DataFrame
 from hep_tables.exceptions import FuncADLTablesException
@@ -17,7 +17,7 @@ from hep_tables.sequence_builders import ast_to_graph
 from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_predicate_base, sequence_transform
 from hep_tables.type_info import type_inspector
 from hep_tables.utils import QueryVarTracker
-from .conftest import MatchObjectSequence
+from .conftest import MatchObjectSequence, mock_vinfo
 
 
 class Jets:
@@ -399,3 +399,116 @@ def test_binary_types(t_left, operator, t_right, t_result, mocker):
     op_v = get_v_info(list(g.vs())[-1])
 
     assert op_v.v_type == Iterable[t_result]
+
+
+def test_function_single_arg(mocker):
+    a = ast.Name('a')
+    c = ast.Call(func=ast.Name(id='my_func'), args=[a], keywords=[])
+
+    g = Graph(directed=True)
+    g['info'] = g_info([])
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = Callable[[float], float]
+    t_mock.callable_type.return_value = ([float], float)
+    t_mock.find_broadcast_level_for_args.return_value = (1, (float))
+
+    ast_to_graph(c, q_mock, g, t_mock)
+
+    assert len(g.vs()) == 2
+    call_v = get_v_info(list(g.vs())[-1])
+
+    assert call_v.v_type == Iterable[float]
+    assert call_v.node is c
+    assert call_v.level == 1
+
+    seq = call_v.sequence
+    assert isinstance(seq, sequence_transform)
+    base = ObjectStream(ast.Name(id='dude'))
+    assert MatchObjectSequence(base.Select("lambda e1000: my_func(e1000)")) \
+        == seq.sequence(base, {a: astIteratorPlaceholder()})
+
+
+def test_function_single_arg_level2(mocker):
+    a = ast.Name('a')
+    c = ast.Call(func=ast.Name(id='my_func'), args=[a], keywords=[])
+
+    g = Graph(directed=True)
+    g['info'] = g_info([])
+    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = Callable[[float], float]
+    t_mock.callable_type.return_value = ([float], float)
+    t_mock.find_broadcast_level_for_args.return_value = (2, (float))
+
+    ast_to_graph(c, q_mock, g, t_mock)
+
+    assert len(g.vs()) == 2
+
+
+def test_function_unknown(mocker):
+    a = ast.Name('a')
+    c = ast.Call(func=ast.Name(id='my_func'), args=[a], keywords=[])
+
+    g = Graph(directed=True)
+    g['info'] = g_info([])
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(c, q_mock, g, t_mock)
+
+    assert "my_func" in str(e.value)
+
+
+def test_function_wrong_level(mocker):
+    a = ast.Name('a')
+    c = ast.Call(func=ast.Name(id='my_func'), args=[a], keywords=[])
+
+    g = Graph(directed=True)
+    g['info'] = g_info([])
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], a))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = Callable[[float], float]
+    t_mock.callable_type.return_value = ([float], float)
+    t_mock.find_broadcast_level_for_args.return_value = (2, (float))
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(c, q_mock, g, t_mock)
+
+    assert "my_func" in str(e.value)
+    assert "dimensions" in str(e.value)
+
+
+def test_function_number_args(mocker):
+    a = ast.Name('a')
+    c = ast.Call(func=ast.Name(id='my_func'), args=[a], keywords=[])
+
+    g = Graph(directed=True)
+    g['info'] = g_info([])
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = Callable[[float, float], float]
+    t_mock.callable_type.return_value = ([float, float], float)
+    t_mock.find_broadcast_level_for_args.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(c, q_mock, g, t_mock)
+
+    assert "my_func" in str(e.value)
