@@ -1,4 +1,6 @@
 import ast
+
+from dataframe_expressions.render_dataframe import render_context
 from hep_tables.graph_info import g_info, get_e_info, get_v_info, v_info
 
 from dataframe_expressions.data_frame import DataFrame
@@ -6,7 +8,7 @@ from hep_tables.exceptions import FuncADLTablesException
 
 from func_adl import ObjectStream
 
-from dataframe_expressions.asts import ast_DataFrame
+from dataframe_expressions.asts import ast_Callable, ast_DataFrame
 from hep_tables import xaod_table
 from typing import Callable, Iterable, List, Optional, Type, Union
 
@@ -17,7 +19,7 @@ from hep_tables.sequence_builders import ast_to_graph
 from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_predicate_base, sequence_transform
 from hep_tables.type_info import type_inspector
 from hep_tables.utils import QueryVarTracker
-from .conftest import MatchObjectSequence, mock_vinfo
+from .conftest import MatchObjectSequence
 
 
 class Jets:
@@ -547,3 +549,47 @@ def test_function_number_args(mocker):
         ast_to_graph(c, q_mock, g, t_mock)
 
     assert "my_func" in str(e.value)
+
+
+def test_map(mocker):
+    a = ast.Name('a')
+    df_a = DataFrame(a)
+    map_func = lambda j: j.pt  # noqa
+    callable = ast_Callable(map_func, df_a)
+    c = ast.Call(func=ast.Attribute(attr='map', value=a), args=[callable])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Jets], a))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.return_value = 'e1000'
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.attribute_type.return_value = Callable[[], float]
+    t_mock.callable_type.return_value = ([], float)
+    t_mock.iterable_object.return_value = float
+
+    context = render_context()
+    context._lookup_dataframe(df_a)
+    context._resolve_ast(a)
+
+    ast_to_graph(c, q_mock, g, t_mock, context=context)
+
+    assert len(g.vs()) == 2
+    call_v = get_v_info(list(g.vs())[-1])
+
+    assert call_v.v_type == Iterable[float]
+    # Note - the "node" this refers to is not something we can point to out here.
+    # it points to a part of the j.pt in the lambda
+    assert call_v.level == 1
+
+    seq = call_v.sequence
+    assert isinstance(seq, sequence_transform)
+    base = ObjectStream(ast.Name(id='dude'))
+    assert MatchObjectSequence(base.Select("lambda e1000: e1000.pt()")) \
+        == seq.sequence(base, {a: astIteratorPlaceholder()})
+
+# df.jets.map(lambda j: df.tracks.map(lambda t: dr(j.pt, t.pt)))
+# df.jets.map(lambda j1: jf.jets.map(lambda j2: dr(j1.pt, j2.pt)))
+
+# TODO: Make sure df.jets.pt() works! and df.jets().pt() too.

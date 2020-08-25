@@ -1,7 +1,8 @@
 import ast
 from typing import Iterable, List, Optional, Type, Union, cast
 
-from dataframe_expressions.asts import ast_DataFrame
+from dataframe_expressions.asts import ast_Callable, ast_DataFrame
+from dataframe_expressions.render_dataframe import render_callable, render_context
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
@@ -14,7 +15,8 @@ from hep_tables.utils import QueryVarTracker
 
 def ast_to_graph(a: ast.AST, qt: QueryVarTracker,
                  g_in: Optional[Graph] = None,
-                 type_system: Optional[type_inspector] = None) -> Graph:
+                 type_system: Optional[type_inspector] = None,
+                 context: Optional[render_context] = None) -> Graph:
     '''Given an AST from `DataFrame` rendering, build a graph network that
     will work on the `func_adl` backend.
 
@@ -26,17 +28,19 @@ def ast_to_graph(a: ast.AST, qt: QueryVarTracker,
         Graph: Returned computational graph
     '''
     g_out = g_in if g_in is not None else Graph(directed=True)
+    context = context if context is not None else render_context()
     type_system = type_system if type_system is not None else type_inspector()
-    _translate_to_sequence(g_out, type_system, qt).visit(a)
+    _translate_to_sequence(g_out, type_system, qt, context).visit(a)
     return g_out
 
 
 class _translate_to_sequence(ast.NodeVisitor):
-    def __init__(self, g: Graph, t_info: type_inspector, qt: QueryVarTracker):
+    def __init__(self, g: Graph, t_info: type_inspector, qt: QueryVarTracker, context: render_context):
         super().__init__()
         self._g = g
         self._t_inspect = t_info
         self._qt = qt
+        self._context = context
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         '''Processing the `Attribute` ast node. Depending on the context, this is
@@ -165,10 +169,56 @@ class _translate_to_sequence(ast.NodeVisitor):
                                        node))
 
     def visit_Call(self, node: ast.Call) -> None:
+        '''Dispatch a call
+
+        - If it is a name, then we had better find it in our type system
+        - If it is an attribute, look for anything special first.
+
+        Args:
+            node (ast.Call): The ast for the node.
+
+        Raises:
+            FuncADLTablesException: If we can't sort out how to call
+        '''
         if isinstance(node.func, ast.Name):
             self.visit_Call_Name(node, node.func)
+        elif isinstance(node.func, ast.Attribute):
+            if hasattr(self, f'visit_Call_{node.func.attr}'):
+                m = getattr(self, f'visit_Call_{node.func.attr}')
+                m(node.func, node)
+            else:
+                raise FuncADLTablesException(f'Do not know how to call function "{node.func.attr}".')
         else:
             assert False, f'Internal programming error - cannot call {node.func}.'
+
+    def visit_Call_map(self, attr: ast.Attribute, node: ast.Call) -> None:
+        '''We want to map a lambda evaluated now onto the sequence we are currently working on.
+
+        We will use `dataframe_expressions` to render this in context and then evaluate it.
+
+        Args:
+            attr (ast.Attribute): The attribute containing the map, including the value it is based on.
+            node (ast.Call): The complete callable.
+        '''
+        # Basic checks
+        if len(node.args) != 1:
+            raise FuncADLTablesException('Require a single argument, a lambda, to a map call')
+        if not isinstance(node.args[0], ast_Callable):
+            raise FuncADLTablesException('Require something we can call as an argument to map (like a lambda).')
+        callable = cast(ast_Callable, node.args[0])
+
+        # Render the base function, and make sure it is in the graph
+        self.visit(attr.value)
+
+        # Run the ast rendering.
+        expr, new_context = render_callable(callable, self._context, callable.dataframe)
+
+        # next, we can run the expression
+        self._context, old_context = new_context, self._context
+        try:
+            self.visit(expr)
+        finally:
+            self._context = old_context
 
     def visit_Call_Name(self, node: ast.Call, func: ast.Name) -> None:
         '''Process a function call. Use the global type system to figure out what the
