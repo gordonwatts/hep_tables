@@ -80,3 +80,51 @@ def test_find_broadcast_good(defined_args, actual_args, level, result):
                          ])
 def test_find_broadcast_bad(defined_args, actual_args):
     assert type_inspector().find_broadcast_level_for_args(defined_args, actual_args) is None
+
+
+def test_static_with_type():
+    class my_types:
+        @staticmethod
+        def my_func(a: float) -> float:
+            ...
+
+    assert type_inspector().static_function_type([my_types], 'my_func') == Callable[[float], float]
+
+
+def test_static_in_search_list():
+    class my_types_1:
+        @staticmethod
+        def my_func(a: float) -> float:
+            ...
+
+    class my_types_2:
+        @staticmethod
+        def my_func1(a: float) -> int:
+            ...
+
+    assert type_inspector().static_function_type([my_types_1, my_types_2], 'my_func1') == Callable[[float], int]
+
+
+def test_static_warning_bad_declare(caplog):
+    class my_types:
+        def my_func(self, a: float) -> float:
+            ...
+
+    assert type_inspector().static_function_type([my_types], 'my_func') is None
+
+    assert "my_func" in caplog.text
+
+
+def test_static_nothing_there(caplog):
+    class my_types:
+        def my_func(self, a: float) -> float:
+            ...
+
+    assert type_inspector().static_function_type([my_types], 'my_func_func') is None
+
+
+def test_static_as_member(caplog):
+    class my_types:
+        my_func = None
+
+    assert type_inspector().static_function_type([my_types], 'my_func') is None

@@ -1,5 +1,38 @@
 import inspect
+import logging
 from typing import Callable, Iterable, List, Optional, Set, Tuple, Type, Union
+
+
+def _callable_signature(a, skip_first: bool) -> Type:
+    '''Return the Callable[] signature of a method or function
+
+    Args:
+        a ([type]): The callable method or function
+        skip_first ([bool]): If true, skip the first parameter. Useful
+        when dealing with methods vs functions
+
+    Returns:
+        Type: [description]
+    '''
+    sig = inspect.signature(a)
+    skip_index = 1 if skip_first else 0
+    args: List[type] = [sig.parameters[p].annotation for p in sig.parameters.keys()][skip_index:]
+    rtn_type = sig.return_annotation
+    return Callable[args, rtn_type]  # type: ignore
+
+
+def _is_method(a) -> bool:
+    '''Is a an instance method or not?
+
+    Args:
+        a ([type]): The callable type
+
+    Returns:
+        bool: True if this represents a method, False otherwise.
+    '''
+    sig = inspect.signature(a)
+    a1 = list(sig.parameters.keys())[0]
+    return a1 == 'self'
 
 
 class type_inspector:
@@ -34,10 +67,7 @@ class type_inspector:
             raise NotImplementedError()
 
         # Some sort of method
-        sig = inspect.signature(a)
-        args: List[type] = [sig.parameters[p].annotation for p in sig.parameters.keys()][1:]
-        rtn_type = sig.return_annotation
-        return Callable[args, rtn_type]  # type: ignore
+        return _callable_signature(a, True)
 
     def static_function_type(self, type_search_list: List[Type], func_name: str) -> Optional[Type]:
         '''Return the type info for a function/attribute attached to a global type.
@@ -51,7 +81,15 @@ class type_inspector:
         Returns:
             Optional[Type]: None if the function was not found, otherwise return the type of the function.
         '''
-        raise NotImplementedError()
+        for t in type_search_list:
+            a = getattr(t, func_name, None)
+            if a is not None:
+                if callable(a):
+                    if _is_method(a):
+                        logging.getLogger(__name__).warning(f'Looking up static function {func_name}, found method on {t}. Ignoring.')
+                        return None
+                    return _callable_signature(a, False)
+        return None
 
     def iterable_object(self, i_type: Type) -> Optional[Type]:
         '''If `i_type` is `Iterable[X]`, then return `x`, otherwise return None.
@@ -129,9 +167,6 @@ class type_inspector:
         Args:
             defined_args (Iterable[Type]): The argument types that are allowed
             actual (Iterable[Type]): The arguments that are provided
-
-        Raises:
-            NotImplementedError: [description]
 
         Returns:
             Optional[Tuple[int, Iterable[Type]]]: None if unwrapping by level is not possible. Otherwise, the level to unwrap to,
