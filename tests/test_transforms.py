@@ -1,13 +1,13 @@
 import ast
-from typing import List, Optional
+from typing import Dict, List, Optional, cast
 
 from func_adl.event_dataset import EventDataset
 from func_adl.object_stream import ObjectStream
 from func_adl.util_ast import lambda_body
 
 from hep_tables.hep_table import xaod_table
-from hep_tables.transforms import (root_sequence_transform, sequence_downlevel,
-                                   sequence_predicate_base, sequence_transform)
+from hep_tables.transforms import (astIteratorPlaceholder, root_sequence_transform, sequence_downlevel,
+                                   sequence_predicate_base, sequence_transform, sequence_tuple)
 
 from .conftest import MatchObjectSequence
 
@@ -82,3 +82,29 @@ def test_downlevel_one(mocker):
 
     assert MatchObjectSequence(o.Select("lambda e1000: e1000.Select(lambda j: 1.0)")) == rendered
     s.sequence.assert_called_with(MatchObjectSequence(ObjectStream(ast.Name('e1000'))), my_dict)
+
+
+def test_tuple_ctor(mocker):
+    lst = [
+        (ast.Constant(1), mocker.MagicMock(spec=sequence_predicate_base)),
+        ([ast.Constant(2), ast.Constant(3)], mocker.MagicMock(spec=sequence_predicate_base)),
+    ]
+    t = sequence_tuple(lst, 'e101')
+    assert len(t.transforms) == 2
+
+
+def test_tuple_sequence(mocker):
+    lst = [
+        (cast(ast.AST, ast.Constant(2)), mocker.MagicMock(spec=sequence_predicate_base)),
+        (ast.Constant(3), mocker.MagicMock(spec=sequence_predicate_base)),
+    ]
+    lst[0][1].sequence.return_value = ObjectStream(ast.Name(id='a'))
+    lst[1][1].sequence.return_value = ObjectStream(ast.Name(id='b'))
+
+    t = sequence_tuple(lst, 'e1000')
+    d: Dict[ast.AST, ast.AST] = {ast.Name(id='hi'): astIteratorPlaceholder()}
+    o = ObjectStream(ast.Name('o'))
+    assert MatchObjectSequence(o.Select("lambda e1000: (a, b)")) == t.sequence(o, d)
+
+    lst[0][1].sequence.assert_called_with(MatchObjectSequence(ObjectStream(ast.Name(id='e1000'))), d)
+    lst[1][1].sequence.assert_called_with(MatchObjectSequence(ObjectStream(ast.Name(id='e1000'))), d)

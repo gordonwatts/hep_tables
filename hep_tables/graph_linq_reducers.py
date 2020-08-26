@@ -22,7 +22,7 @@ def run_linear_reduction(g: Graph, qv: QueryVarTracker):
         if level != 1:
             reduce_level(g, level, qv)
 
-        reduce_tuple_vertices(g, level)
+        reduce_tuple_vertices(g, level, qv)
 
 
 def find_highest_level(g: Graph) -> int:
@@ -69,7 +69,7 @@ def partition_by_parents(vs: List[Vertex]) -> List[List[Vertex]]:
     return [v_list for v_list in organized_vertices.values()]
 
 
-def reduce_tuple_vertices(g: Graph, level: int):
+def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
     '''Look for places where there are two vertices that need to be executed
     in a single step and combine them into a tuple statement.
 
@@ -103,7 +103,7 @@ def reduce_tuple_vertices(g: Graph, level: int):
 
                     vertices_to_delete.append(v)
 
-                new_seq = sequence_tuple(transform_pairs)
+                new_seq = sequence_tuple(transform_pairs, qv.new_var_name())
                 new_vertex = g.add_vertex(info=v_info(level=level, seq=new_seq, v_type=Any, node=ast_list, order=0))
                 g.add_edges([(new_vertex, p) for p in set(parent_vertices)])
                 g.add_edges([(p, new_vertex) for p in set(child_vertices)])

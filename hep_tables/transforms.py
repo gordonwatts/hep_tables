@@ -102,15 +102,40 @@ class sequence_transform(sequence_predicate_base):
 
 
 class sequence_tuple(sequence_predicate_base):
-    def __init__(self, transforms: List[Tuple[Union[ast.AST, List[ast.AST]], sequence_predicate_base]]):
+    '''A sequence step - that generates a listing as a tuple.
+    '''
+    def __init__(self, transforms: List[Tuple[Union[ast.AST, List[ast.AST]], sequence_predicate_base]], var_name: str):
+        '''Create a tuple func_adl sequence step. Pass the list of transforms and `ast` that represent each
+        transform.
+
+        TODO: Can we just remove the ast requirement? Doesn't seem like it is used anywhere.
+
+        Args:
+            transforms (List[Tuple[Union[ast.AST, List[ast.AST]], sequence_predicate_base]]): List of the
+            transforms that should be performed together in a tuple.
+
+            var_name (str): The name of a new variable we can use in the generated Select statement.
+        '''
         self._trans_info = transforms
+        self._var_name = var_name
 
     @property
     def transforms(self) -> List[sequence_predicate_base]:
         return [t[1] for t in self._trans_info]
 
     def sequence(self, sequence: Optional[ObjectStream], seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
-        raise NotImplementedError()
+        '''Generate the tuple sequence by applying the sequence operation to each of our own transforms.
+
+        Args:
+            sequence (Optional[ObjectStream]): The sequence we are basing this on
+            seq_dict (Dict[ast.AST, ast.AST]): Replacement look-ups for the various inputs.
+
+        Returns:
+            ObjectStream: New sequence with a tuple appended on the end.
+        '''
+        o_seq = ObjectStream(ast.Name(id=self._var_name))
+        seq_tuple = ast.Tuple(elts=[s.sequence(o_seq, seq_dict)._ast for _, s in self._trans_info])
+        return sequence.Select(lambda_build(self._var_name, seq_tuple))
 
 
 class sequence_downlevel(sequence_predicate_base):

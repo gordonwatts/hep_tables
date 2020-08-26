@@ -68,7 +68,7 @@ def test_downlevel_one_sequence(mocker, mock_root_sequence_transform, mock_qt):
     assert get_v_info(level_2_1).level == 1
 
 
-def test_reduce_vertices_separate_steps(mocker):
+def test_reduce_vertices_separate_steps(mocker, mock_qt):
     'Two vertices in different steps, same level, do not get combined'
     g = Graph(directed=True)
     a_1 = ast.Constant(1)
@@ -79,12 +79,12 @@ def test_reduce_vertices_separate_steps(mocker):
 
     g.add_edge(level_2, level_1, info=e_info(True))
 
-    reduce_tuple_vertices(g, 2)
+    reduce_tuple_vertices(g, 2, mock_qt)
 
     assert len(g.vs()) == 2
 
 
-def test_reduce_vertices_simple_dependency(mocker):
+def test_reduce_vertices_simple_dependency(mocker, mock_qt):
     'Three vertices, get combined, and check meta-data'
     g = Graph(directed=True)
     a_1 = ast.Constant(1)
@@ -98,7 +98,7 @@ def test_reduce_vertices_simple_dependency(mocker):
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, order=1, seq=mocker.MagicMock(spec=sequence_transform)))
     g.add_edge(level_3, level_1, info=e_info(True))
 
-    reduce_tuple_vertices(g, 2)
+    reduce_tuple_vertices(g, 2, mock_qt)
 
     assert len(g.vs()) == 2  # Number of vertices
     assert len(g.es()) == 1  # Number of edges
@@ -128,7 +128,7 @@ def test_reduce_vertices_simple_dependency(mocker):
     assert v_2_md.order == 0
 
 
-def test_reduce_vertices_separate_dependency(mocker):
+def test_reduce_vertices_separate_dependency(mocker, mock_qt):
     '''5 vertices, but they have different levesl, and despite being at same level, do not have same parents
     so do not get combined.'''
     g = Graph(directed=True)
@@ -151,12 +151,12 @@ def test_reduce_vertices_separate_dependency(mocker):
     level_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, seq=mocker.MagicMock(spec=sequence_transform)))
     g.add_edge(level_5, level_3, info=e_info(True))
 
-    reduce_tuple_vertices(g, 2)
+    reduce_tuple_vertices(g, 2, mock_qt)
 
     assert len(g.vs()) == 5
 
 
-def test_reduce_vertices_wrong_level(mocker):
+def test_reduce_vertices_wrong_level(mocker, mock_qt):
     'Combinable vertices at level 2, but we ask for level 3 combines - so nothing happens'
     g = Graph(directed=True)
     a_1 = ast.Constant(1)
@@ -170,12 +170,12 @@ def test_reduce_vertices_wrong_level(mocker):
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, seq=mocker.MagicMock(spec=sequence_transform)))
     g.add_edge(level_3, level_1, info=e_info(True))
 
-    reduce_tuple_vertices(g, 3)
+    reduce_tuple_vertices(g, 3, mock_qt)
 
     assert len(g.vs()) == 3
 
 
-def test_reduce_vertices_sequential_reduction(mocker):
+def test_reduce_vertices_sequential_reduction(mocker, mock_qt):
     'Two parallel paths through, when the first part of the path gets combined, the second part should too'
     g = Graph(directed=True)
     a_1 = ast.Constant(1)
@@ -197,6 +197,6 @@ def test_reduce_vertices_sequential_reduction(mocker):
     level_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=4, seq=mocker.MagicMock(spec=sequence_transform)))
     g.add_edge(level_5, level_3, info=e_info(True))
 
-    reduce_tuple_vertices(g, 2)
+    reduce_tuple_vertices(g, 2, mock_qt)
 
     assert len(g.vs()) == 3
