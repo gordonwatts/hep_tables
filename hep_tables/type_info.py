@@ -3,24 +3,6 @@ import logging
 from typing import Callable, Iterable, List, Optional, Set, Tuple, Type, Union
 
 
-def _callable_signature(a, skip_first: bool) -> Type:
-    '''Return the Callable[] signature of a method or function
-
-    Args:
-        a ([type]): The callable method or function
-        skip_first ([bool]): If true, skip the first parameter. Useful
-        when dealing with methods vs functions
-
-    Returns:
-        Type: [description]
-    '''
-    sig = inspect.signature(a)
-    skip_index = 1 if skip_first else 0
-    args: List[type] = [sig.parameters[p].annotation for p in sig.parameters.keys()][skip_index:]
-    rtn_type = sig.return_annotation
-    return Callable[args, rtn_type]  # type: ignore
-
-
 def _is_method(a) -> bool:
     '''Is a an instance method or not?
 
@@ -67,7 +49,7 @@ class type_inspector:
             raise NotImplementedError()
 
         # Some sort of method
-        return _callable_signature(a, True)
+        return self.callable_signature(a, True)
 
     def static_function_type(self, type_search_list: List[Type], func_name: str) -> Optional[Type]:
         '''Return the type info for a function/attribute attached to a global type.
@@ -88,7 +70,7 @@ class type_inspector:
                     if _is_method(a):
                         logging.getLogger(__name__).warning(f'Looking up static function {func_name}, found method on {t}. Ignoring.')
                         return None
-                    return _callable_signature(a, False)
+                    return self.callable_signature(a, False)
         return None
 
     def iterable_object(self, i_type: Type) -> Optional[Type]:
@@ -190,3 +172,20 @@ class type_inspector:
         if r is not None:
             return r[0] + 1, r[1]
         return None
+
+    def callable_signature(self, a: Callable, skip_first: bool) -> Type:
+        '''Return the Callable[] signature of a method or function
+
+        Args:
+            a ([type]): The callable method or function
+            skip_first ([bool]): If true, skip the first parameter. Useful
+            when dealing with methods vs functions
+
+        Returns:
+            Type: [description]
+        '''
+        sig = inspect.signature(a)
+        skip_index = 1 if skip_first else 0
+        args: List[type] = [sig.parameters[p].annotation for p in sig.parameters.keys()][skip_index:]
+        rtn_type = sig.return_annotation if sig.return_annotation is not inspect.Signature.empty else None
+        return Callable[args, rtn_type]  # type: ignore

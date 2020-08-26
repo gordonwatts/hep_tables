@@ -1,7 +1,7 @@
 import ast
 from typing import Iterable, List, Optional, Type, Union, cast
 
-from dataframe_expressions.asts import ast_Callable, ast_DataFrame
+from dataframe_expressions.asts import ast_Callable, ast_DataFrame, ast_FunctionPlaceholder
 from dataframe_expressions.render_dataframe import render_callable, render_context
 from igraph import Graph, Vertex  # type: ignore
 
@@ -199,8 +199,18 @@ class _translate_to_sequence(ast.NodeVisitor):
                 m(node.func, node)
             else:
                 raise FuncADLTablesException(f'Do not know how to call function "{node.func.attr}".')
+        elif isinstance(node.func, ast_FunctionPlaceholder):
+            self.visit_Call_ast_FunctionPlaceholder(node.func, node)
         else:
-            assert False, f'Internal programming error - cannot call {node.func}.'
+            assert False, f'Internal programming error - a call to {node.func} is not supported.'
+
+    def visit_Call_ast_FunctionPlaceholder(self, func: ast_FunctionPlaceholder, node: ast.Call):
+        'Process a function defined as being on the backend in the dataframe_expressions package'
+        name = func.callable.__name__
+        func_type_info = self._t_inspect.callable_signature(func.callable, False)
+
+        call = ast.Call(func=ast.Name(name), args=node.args, keywords=[])
+        self.named_function_call(func_type_info, name, node, call)
 
     def visit_Call_map(self, attr: ast.Attribute, node: ast.Call) -> None:
         '''We want to map a lambda evaluated now onto the sequence we are currently working on.
@@ -243,9 +253,26 @@ class _translate_to_sequence(ast.NodeVisitor):
         func_type_info = self._t_inspect.static_function_type(get_g_info(self._g).global_types, func.id)
         if func_type_info is None:
             raise FuncADLTablesException(f'Function "{func.id}" is not defined."')
-        arg_types, return_type = self._t_inspect.callable_type(func_type_info)
-        if arg_types is None or return_type is None:
-            raise FuncADLTablesException(f'Function "{func.id}" is not defined as being callable!')
+
+        self.named_function_call(func_type_info, func.id, node, node)
+
+    def named_function_call(self, function_type_info: Type, func_name: str, node: ast.Call, transform_body: ast.Call):
+        '''Given a function name and its signature, code up a call, matching argument
+        levels if needed.
+
+        Args:
+            function_type_info (Type): The type information for the call: `Callable[[float], int]`
+            func_name (str): The name of the function
+            node (ast.Call): The ast node this function call represents
+            transform_body (ast.Call): The ast to use in the transform - the body of the call.
+
+        '''
+        arg_types, return_type = self._t_inspect.callable_type(function_type_info)
+        if arg_types is None and return_type is None:
+            raise FuncADLTablesException(f'Function "{func_name}" is not defined as being callable!')
+        assert arg_types is not None, f'Internal error - a callable function should have at least an empty arg list: {func_name}.'
+        if return_type is None:
+            raise FuncADLTablesException(f'Function "{func_name}" does not have a defined return type - required.')
 
         # Evaluate the arguments so we can get their types.
         for a in node.args:
@@ -255,13 +282,13 @@ class _translate_to_sequence(ast.NodeVisitor):
 
         level_type_info = self._t_inspect.find_broadcast_level_for_args(arg_types, [m.v_type for m in arg_meta])
         if level_type_info is None:
-            raise FuncADLTablesException(f'Do not know how to call {func.id}({arg_types}) with given argument ({[m.v_type for m in arg_meta]})')
+            raise FuncADLTablesException(f'Do not know how to call {func_name}({arg_types}) with given argument ({[m.v_type for m in arg_meta]})')
         level, actual_args = level_type_info
         if not all(level == m.level for m in arg_meta):
-            raise FuncADLTablesException(f'In order to call {func.id}({arg_types}), all items need to have the same number of array dimensions.')
+            raise FuncADLTablesException(f'In order to call {func_name}({arg_types}), all items need to have the same number of array dimensions.')
 
         # Ok - since this works, lets build the function.
-        seq = sequence_transform(cast(List[ast.AST], node.args), self._qt.new_var_name(), node)
+        seq = sequence_transform(cast(List[ast.AST], node.args), self._qt.new_var_name(), transform_body)
         for i in range(level):
             return_type = Iterable[return_type]  # type: ignore
         v_i = v_info(level, seq, return_type, node)

@@ -128,3 +128,10 @@ def test_static_as_member(caplog):
         my_func = None
 
     assert type_inspector().static_function_type([my_types], 'my_func') is None
+
+
+def test_callable_no_return():
+    def func1(a: float):
+        ...
+
+    assert type_inspector().callable_signature(func1, False) == Callable[[float], None]
