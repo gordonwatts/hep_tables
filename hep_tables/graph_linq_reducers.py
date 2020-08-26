@@ -90,7 +90,7 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
                 for index, v in enumerate(sorted(p_group, key=lambda k: get_v_info(k).order)):
                     vs_meta = get_v_info(v)
                     transform_pairs.append((vs_meta.node, vs_meta.sequence))
-                    ast_list[vs_meta.node] = ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=index))
+                    ast_list[vs_meta.node] = ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=ast.Num(index)))
 
                     # Delete the edges from this vertex into the graph, and replace them with the new ones
                     children = v.neighbors(mode='in')

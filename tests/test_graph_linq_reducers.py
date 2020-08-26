@@ -116,8 +116,8 @@ def test_reduce_vertices_simple_dependency(mocker, mock_qt):
 
     assert v_1_md.node is a_1
     assert len(v_2_md.node_as_dict) == 2
-    assert MatchAST(ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=0))) == v_2_md.node_as_dict[a_2]
-    assert MatchAST(ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=1))) == v_2_md.node_as_dict[a_3]
+    assert MatchAST(ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=ast.Num(n=0)))) == v_2_md.node_as_dict[a_2]
+    assert MatchAST(ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=ast.Num(n=1)))) == v_2_md.node_as_dict[a_3]
 
     assert isinstance(v_1_md.sequence, sequence_transform)
     seq = v_2_md.sequence
