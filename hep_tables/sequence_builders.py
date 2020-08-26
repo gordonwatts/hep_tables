@@ -75,11 +75,11 @@ class _translate_to_sequence(ast.NodeVisitor):
         attr_type: Optional[Type] = None
         depth = 0
         while attr_type is None:
+            v_type_old = v_type
             v_type = self._t_inspect.iterable_object(v_type)
             depth += 1
             if v_type is None:
-                # TODO: This might be an internal error, not a user error. Not totally sure.
-                raise FuncADLTablesException(f'Do not know how to apply "{node.attr}" on a sequence that is not iterable ({vs_meta.v_type})')
+                raise FuncADLTablesException(f'Cannot find attribute "{node.attr}" on {v_type_old} (from {vs_meta.v_type})')
 
             attr_type = self._t_inspect.attribute_type(v_type, node.attr)
 
