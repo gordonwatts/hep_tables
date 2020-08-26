@@ -42,6 +42,17 @@ class _translate_to_sequence(ast.NodeVisitor):
         self._qt = qt
         self._context = context
 
+    def visit(self, node: ast.AST) -> None:
+        '''Top level visit. If this ast has already got a node, no need for us to run!
+
+        Args:
+            node (ast.AST): Node to process if we can't find it in the graph already
+        '''
+        if any(self._g.vs.select(lambda v: get_v_info(v).node is node)):
+            return
+
+        super().visit(node)
+
     def visit_Attribute(self, node: ast.Attribute) -> None:
         '''Processing the `Attribute` ast node. Depending on the context, this is
         probably a function call of some wort.

@@ -72,14 +72,34 @@ def test_xaod_table_not_first(mocker):
     df = mocker.MagicMock(spec=xaod_table)
     df.table_type = TestEvent
 
+    g = Graph(directed=True)
+    a1 = ast_DataFrame(df)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], node=a1))
+
+    a2 = ast_DataFrame(df)
+
     t_mock = mocker.MagicMock(spec=type_inspector)
     q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    g = Graph(directed=True)
-    g.add_vertex()
+    with pytest.raises(FuncADLTablesException):
+        ast_to_graph(a2, q_mock, g, t_mock)
+
+
+def test_xaod_table_same_twice(mocker):
+    'If we already have a graph entry for the xaod table and we hit the same one again'
+    df = mocker.MagicMock(spec=xaod_table)
+    df.table_type = TestEvent
 
     a = ast_DataFrame(df)
-    with pytest.raises(FuncADLTablesException):
-        ast_to_graph(a, q_mock, g, t_mock)
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], node=a))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+
+    g = ast_to_graph(a, q_mock, g, t_mock)
+
+    vertexes = g.vs()
+    assert len(vertexes) == 1
 
 
 def test_xaod_table_not_xaod_table(mocker):
