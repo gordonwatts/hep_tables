@@ -27,6 +27,11 @@ class Jets:
         ...
 
 
+class Tracks:
+    def pt(self) -> float:
+        ...
+
+
 class TestEvent:
     def ListOfFloats(self) -> List[float]:
         ...
@@ -337,6 +342,9 @@ def test_binary_two_levels_down(mocker):
                                                             (Iterable[Iterable[float]], Iterable[Iterable[float]]))
 
 
+# TODO: Test that binary two levels down from different sources (tracks.pt + jets.pt) fails. (make sure not already tested)
+
+
 def test_binary_bad_type(mocker):
     'Test binary operator: Iterable[Iterable[float]] + Iterable[Iterable[Jet]]'
     a = ast.Num('a')
@@ -588,6 +596,65 @@ def test_map(mocker):
     base = ObjectStream(ast.Name(id='dude'))
     assert MatchObjectSequence(base.Select("lambda e1000: e1000.pt()")) \
         == seq.sequence(base, {a: astIteratorPlaceholder()})
+
+
+# TODO: When we get the j.pt in test_double_map return with argument of [float, float] -> [float] but supply
+# no args - it says "implied called to pt..." - but doesn't tell us if it is the Jet pt or the Track pT. It should.
+
+
+def test_double_map(mocker):
+    from dataframe_expressions import user_func
+
+    @user_func
+    def my_func(a: float, b: float) -> float:
+        ...
+
+    a = ast.Name('a')
+    b = ast.Name('b')
+    df_a = DataFrame(a)
+    df_b = DataFrame(b)
+    map_func = lambda j: df_b.map(lambda k: j.pt + k.pt)  # noqa
+    callable = ast_Callable(map_func, df_a)
+    c = ast.Call(func=ast.Attribute(attr='map', value=a), args=[callable])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Jets], a))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Tracks], b))
+
+    q_mock = mocker.MagicMock(spec=QueryVarTracker)
+    q_mock.new_var_name.side_effect = ['e1000', 'e1001', 'e1002']
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = Callable[[], float]
+    t_mock.callable_type.return_value = ([], float)
+    t_mock.iterable_object.return_value = float
+    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+
+    context = render_context()
+    context._lookup_dataframe(df_a)
+    context._lookup_dataframe(df_b)
+    context._resolve_ast(a)
+    context._resolve_ast(b)
+
+    ast_to_graph(c, q_mock, g, t_mock, context=context)
+
+    assert len(g.vs()) == 5
+    # 2 are the ones we added
+    # one each to calc the pt (2)
+    # one to do the sum
+
+    # The last add should have the two pt ones connected to it.
+    add_v = list(g.vs())[-1]
+    call_add = get_v_info(add_v)
+    assert call_add.v_type == Iterable[float]
+    assert len(list(add_v.neighbors(mode='out')))
+    left_v, right_v = list(add_v.neighbors(mode='out'))
+    base = ObjectStream(ast.Name(id='dude'))
+    assert MatchObjectSequence(base.Select("lambda e1002: e1002 + e1005")) \
+        == call_add.sequence.sequence(base, {get_v_info(left_v).node: astIteratorPlaceholder(), get_v_info(right_v).node: ast.Name('e1005')})
+
+    assert get_v_info(left_v).v_type == Iterable[float]
+    assert get_v_info(right_v).v_type == Iterable[float]
 
 # df.jets.map(lambda j: df.tracks.map(lambda t: dr(j.pt, t.pt)))
 # df.jets.map(lambda j1: jf.jets.map(lambda j2: dr(j1.pt, j2.pt)))
