@@ -1,10 +1,13 @@
 import ast
-from hep_tables.hep_table import xaod_table
-from typing import Any, Dict, List, Optional, Tuple, Type
 from collections import namedtuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from dataframe_expressions import ast_DataFrame
 
+from hep_tables.hep_table import xaod_table
+
+# TODO: Remove a lot of this code if no longer used
+# TODO: MOve ast related stuff over to util_ast
 
 def _find_dataframes(a: ast.AST) -> ast_DataFrame:
     'Find the asts that represent dataframes. Limit to one or failure for now'

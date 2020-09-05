@@ -1,13 +1,14 @@
 import ast
-from hep_tables.graph_info import copy_v_info, get_v_info, v_info
-from hep_tables.utils import QueryVarTracker
-from typing import Any, Dict, List, Tuple
 from collections import defaultdict
+from typing import Any, Dict, List, Tuple
 
 from igraph import Graph, Vertex  # type:ignore
 
-from hep_tables.transforms import astIteratorPlaceholder, sequence_downlevel, sequence_tuple
+from hep_tables.graph_info import copy_v_info, get_v_info, v_info
+from hep_tables.transforms import expression_tuple, sequence_downlevel
+from hep_tables.util_ast import add_level_to_holder, astIteratorPlaceholder, replace_holder, set_holder_level_index
 from hep_tables.util_graph import depth_first_traversal
+from hep_tables.utils import QueryVarTracker
 
 
 def run_linear_reduction(g: Graph, qv: QueryVarTracker):
@@ -19,10 +20,10 @@ def run_linear_reduction(g: Graph, qv: QueryVarTracker):
     '''
     max_level = find_highest_level(g)
     for level in range(max_level, 0, -1):
-        if level != 1:
-            reduce_level(g, level, qv)
-
         reduce_tuple_vertices(g, level, qv)
+
+        if level != 0:
+            reduce_level(g, level, qv)
 
 
 def find_highest_level(g: Graph) -> int:
@@ -45,11 +46,12 @@ def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
         level (int): All nodes of this level will be reduced by one.
         qv (QueryVarTracker): New variable name generator
     '''
-    assert level > 1, f'Internal programming error: cannot reduce level {level} - must be 2 or larger'
+    assert level > 0, f'Internal programming error: cannot reduce level {level} - must be 2 or larger'
     for v in (a_good_v for a_good_v in g.vs() if get_v_info(a_good_v).level == level):
         vs_meta = get_v_info(v)
         new_seq = sequence_downlevel(vs_meta.sequence, qv.new_var_name())
-        v['info'] = copy_v_info(vs_meta, new_sequence=new_seq, new_level=level - 1)
+        new_node_dict = {k: add_level_to_holder().visit(v) for k, v in vs_meta.node_as_dict.items()}
+        v['info'] = copy_v_info(vs_meta, new_sequence=new_seq, new_level=level - 1, new_node=new_node_dict)
 
 
 def partition_by_parents(vs: List[Vertex]) -> List[List[Vertex]]:
@@ -83,14 +85,16 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
         level_group = [v for v in grouping if get_v_info(v).level == level]
         for p_group in partition_by_parents(level_group):
             if len(p_group) > 1:
-                transform_pairs = []
+                transforms = []
                 parent_vertices = []
                 child_vertices = []
                 ast_list = {}
                 for index, v in enumerate(sorted(p_group, key=lambda k: get_v_info(k).order)):
                     vs_meta = get_v_info(v)
-                    transform_pairs.append((vs_meta.node, vs_meta.sequence))
-                    ast_list[vs_meta.node] = ast.Subscript(value=astIteratorPlaceholder(), slice=ast.Index(value=ast.Num(index)))
+                    transforms.append(vs_meta.sequence)
+                    for key, val in vs_meta.node_as_dict.items():
+                        set_holder_level_index(index).visit(val)
+                        ast_list[key] = val
 
                     # Delete the edges from this vertex into the graph, and replace them with the new ones
                     children = v.neighbors(mode='in')
@@ -103,7 +107,7 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
 
                     vertices_to_delete.append(v)
 
-                new_seq = sequence_tuple(transform_pairs, qv.new_var_name())
+                new_seq = expression_tuple(transforms)
                 new_vertex = g.add_vertex(info=v_info(level=level, seq=new_seq, v_type=Any, node=ast_list, order=0))
                 g.add_edges([(new_vertex, p) for p in set(parent_vertices)])
                 g.add_edges([(p, new_vertex) for p in set(child_vertices)])

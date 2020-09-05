@@ -5,8 +5,8 @@ import pytest
 from igraph import Graph
 
 from hep_tables.graph_info import copy_v_info, get_v_info, v_info
-from hep_tables.transforms import (astIteratorPlaceholder,
-                                   sequence_predicate_base)
+from hep_tables.transforms import sequence_predicate_base
+from hep_tables.util_ast import astIteratorPlaceholder
 
 
 def test_node_info_basic(mocker):

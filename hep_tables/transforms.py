@@ -1,23 +1,94 @@
 import ast
 from abc import ABC, abstractmethod
-
-from func_adl.util_ast import lambda_build
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional
 
 from dataframe_expressions.utils_ast import CloningNodeTransformer
 from func_adl.object_stream import ObjectStream
+from func_adl.util_ast import lambda_build
 
 from hep_tables.hep_table import xaod_table
+from hep_tables.util_ast import astIteratorPlaceholder, reduce_holder_by_level, replace_holder
 
 
-class astIteratorPlaceholder(ast.AST):
-    '''A place holder for the actual variable that references
-    the main iterator sequence objects.
+class expression_predicate_base(ABC):
+    '''Base class for all expressions we use to assemble an func_adl expression.
+    Everything should derive from this.
     '''
-    pass
+    @abstractmethod
+    def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
+        '''Return the ast we are holding, with replacements done as requested in the dict.
+
+        Args:
+            ast_replacements (Dict[ast.AST, ast.AST]): The dictionary of AST replacements.
+
+        Returns:
+            (ast.AST): The ast with replacements done. The held ast is not altered in the process.
+        '''
+        ...
 
 
-class sequence_predicate_base(ABC):
+class expression_transform(expression_predicate_base):
+    '''A simple expression, function call, etc.
+    '''
+    def __init__(self, exp: ast.AST):
+        '''Initialize with an expression.
+
+        Args:
+            exp (ast.AST): The expression this object should hold onto
+        '''
+        self._exp = exp
+
+    def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
+        '''Render the AST, doing any replacement required first. The original AST
+        is not modified in the process.
+
+        Args:
+            ast_replacements (Dict[ast.AST, ast.AST]): ast replacement dict
+
+        Returns:
+            ast.AST: New AST with the replacements done.
+        '''
+        class replace_ast(CloningNodeTransformer):
+            def generic_visit(self, node: ast.AST) -> Optional[ast.AST]:
+                if node in ast_replacements:
+                    return ast_replacements[node]
+                return super().generic_visit(node)
+
+        return replace_ast().visit(self._exp)
+
+
+class expression_tuple(expression_predicate_base):
+    '''A tuple expression - holds several expressions together
+    in a tuple.
+    '''
+    def __init__(self, expressions: List[expression_predicate_base]):
+        '''Create a tuple expression - we will run all the expressions at once
+        in a python `Tuple`.
+
+        Args:
+            expressions (List[expression_predicate_base]): The expressions
+        '''
+        self._expressions = expressions
+
+    @property
+    def transforms(self) -> List[expression_predicate_base]:
+        return self._expressions
+
+    def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
+        '''Render as tuple our expression.
+
+        Args:
+            ast_replacements (Dict[ast.AST, ast.AST]): The ast replacements to run on each
+            expressions we are holding onto.
+
+        Returns:
+            ast.AST: The expressions we are returning
+        '''
+        rendered_asts = [e.render_ast(ast_replacements) for e in self._expressions]
+        return ast.Tuple(elts=rendered_asts)
+
+
+class sequence_predicate_base(expression_predicate_base):
     '''Base class that holds a transform that will convert a stream from one form to another.
     '''
     def __init__(self):
@@ -41,107 +112,14 @@ class sequence_predicate_base(ABC):
 
         Returns:
             Dict[ast.AST, ast.AST]: [description]
-'''
+        '''
         ...
-
-
-class sequence_transform(sequence_predicate_base):
-    '''Takes a sequence of type L[T1] and translates it to L[T2].
-    '''
-    def __init__(self,
-                 dependent_asts: List[ast.AST],
-                 var_name: str,
-                 function_body: ast.AST):
-        '''Transforms a sequence with the expression implied by the `function` argument.
-
-        TODO: Do we care about `dependent_asts`?
-
-        Args:
-            dependent_asts (List[ast.AST]):     List of the `ast`'s that must be
-                                                replaced in the `function` `ast` during rendering by references to
-                                                the stream or monads.
-
-            function_body (ast.AST):                 The ast that represents a Lambda function (must start with ast.Lambda).
-                                                The argument should already be unique.
-
-            var_name (str):                     Variable name we should use in the `lambda` we have to construct
-
-        Notes:
-        '''
-        self._function_body = function_body
-        self._dependent_asts = dependent_asts
-        self._var_name = var_name
-
-    def sequence(self, sequence: Optional[ObjectStream],
-                 seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
-        '''
-        Return a Select statement around the function we are given.
-        '''
-        # Replace the arguments in the dict
-        class replace_with_name(CloningNodeTransformer):
-            def __init__(self, a: ast.AST):
-                self._replace = a
-
-            def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> ast.AST:
-                return self._replace
-
-        replacer = replace_with_name(ast.Name(id=self._var_name))
-        replaced_dict = {k: replacer.visit(v) for k, v in seq_dict.items()}
-
-        # Replace the arguments in the function
-        class replace_ast(CloningNodeTransformer):
-            def generic_visit(self, node: ast.AST) -> Optional[ast.AST]:
-                if node in replaced_dict:
-                    return replaced_dict[node]
-                return super().generic_visit(node)
-
-        replaced = replace_ast().visit(self._function_body)
-
-        # Return the call
-        return sequence.Select(lambda_build(self._var_name, replaced))
-
-
-class sequence_tuple(sequence_predicate_base):
-    '''A sequence step - that generates a listing as a tuple.
-    '''
-    def __init__(self, transforms: List[Tuple[Union[ast.AST, List[ast.AST]], sequence_predicate_base]], var_name: str):
-        '''Create a tuple func_adl sequence step. Pass the list of transforms and `ast` that represent each
-        transform.
-
-        TODO: Can we just remove the ast requirement? Doesn't seem like it is used anywhere.
-
-        Args:
-            transforms (List[Tuple[Union[ast.AST, List[ast.AST]], sequence_predicate_base]]): List of the
-            transforms that should be performed together in a tuple.
-
-            var_name (str): The name of a new variable we can use in the generated Select statement.
-        '''
-        self._trans_info = transforms
-        self._var_name = var_name
-
-    @property
-    def transforms(self) -> List[sequence_predicate_base]:
-        return [t[1] for t in self._trans_info]
-
-    def sequence(self, sequence: Optional[ObjectStream], seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
-        '''Generate the tuple sequence by applying the sequence operation to each of our own transforms.
-
-        Args:
-            sequence (Optional[ObjectStream]): The sequence we are basing this on
-            seq_dict (Dict[ast.AST, ast.AST]): Replacement look-ups for the various inputs.
-
-        Returns:
-            ObjectStream: New sequence with a tuple appended on the end.
-        '''
-        o_seq = ObjectStream(ast.Name(id=self._var_name))
-        seq_tuple = ast.Tuple(elts=[s.sequence(o_seq, seq_dict)._ast for _, s in self._trans_info])
-        return sequence.Select(lambda_build(self._var_name, seq_tuple))
 
 
 class sequence_downlevel(sequence_predicate_base):
     '''Hold onto a transform that has to be processed one level down (a nested select
     statement that allows us to access an array of an array)'''
-    def __init__(self, transform: sequence_predicate_base, var_name: str):
+    def __init__(self, transform: expression_predicate_base, var_name: str):
         '''Create a transform that will operate on the items in an array that is in the current sequence.
 
         `b: b.Select(j: transform(j))`
@@ -155,14 +133,38 @@ class sequence_downlevel(sequence_predicate_base):
         self._var_name = var_name
 
     @property
-    def transform(self) -> sequence_predicate_base:
+    def transform(self) -> expression_predicate_base:
         return self._transform
 
     def sequence(self, sequence: Optional[ObjectStream], seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
-        ov = ObjectStream(ast.Name(self._var_name))
-        down_level = self.transform.sequence(ov, seq_dict)
-        lam = lambda_build(self._var_name, down_level._ast)
-        return sequence.Select(lam)
+        '''Render the sub-expression and run a Select on the item
+
+        Args:
+            sequence (Optional[ObjectStream]): The base sequence on which to run
+            seq_dict (Dict[ast.AST, ast.AST]): The replacement dictionary to use
+
+        Returns:
+            ObjectStream: The new, output, sequence
+        '''
+        # Render the down-level items - which means going "deep" on the place holder levels.
+        downlevel_dict = reduce_holder_by_level(seq_dict)
+        sub_expr = self._transform.render_ast(downlevel_dict)
+
+        select_func = lambda_build(self._var_name, replace_holder(self._var_name).visit(sub_expr))
+        return sequence.Select(select_func)
+
+    def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
+        '''Do a rendering of the sequence as an expression.
+
+        Args:
+            ast_replacements (Dict[ast.AST, ast.AST]): ast replacements
+
+        Returns:
+            ast.AST: The ast that represents this downlevel. A place holder will be in
+            the select call.
+        '''
+        o = ObjectStream(astIteratorPlaceholder())
+        return self.sequence(o, ast_replacements)._ast
 
 
 def name_seq_argument(seq_dict: Dict[ast.AST, ast.AST], new_name: str) -> Dict[ast.AST, ast.AST]:
@@ -204,3 +206,6 @@ class root_sequence_transform(sequence_predicate_base):
         '''
         return self.eds.event_source[0]
         # TODO: Deal with multiple event sources.
+
+    def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
+        raise NotImplementedError()

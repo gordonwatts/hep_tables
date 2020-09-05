@@ -1,25 +1,23 @@
 import ast
-
-from dataframe_expressions.render_dataframe import render_context
-from hep_tables.graph_info import g_info, get_e_info, get_v_info, v_info
-
-from dataframe_expressions.data_frame import DataFrame
-from hep_tables.exceptions import FuncADLTablesException
-
-from func_adl import ObjectStream
-
-from dataframe_expressions.asts import ast_Callable, ast_DataFrame, ast_FunctionPlaceholder
-from hep_tables import xaod_table
 from typing import Callable, Iterable, List, Optional, Type, Union
 
 import pytest
+from dataframe_expressions.asts import (ast_Callable, ast_DataFrame,
+                                        ast_FunctionPlaceholder)
+from dataframe_expressions.data_frame import DataFrame
+from dataframe_expressions.render_dataframe import render_context
 from igraph import Graph
 
+from hep_tables import xaod_table
+from hep_tables.exceptions import FuncADLTablesException
+from hep_tables.graph_info import g_info, get_e_info, get_v_info, v_info
 from hep_tables.sequence_builders import ast_to_graph
-from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_predicate_base, sequence_transform
+from hep_tables.transforms import (expression_transform,
+                                   root_sequence_transform,
+                                   sequence_predicate_base)
 from hep_tables.type_info import type_inspector
-from hep_tables.utils import QueryVarTracker
-from .conftest import MatchObjectSequence
+
+from .conftest import MatchAST
 
 
 class Jets:
@@ -49,11 +47,10 @@ def test_xaod_table_type(mocker):
     df.table_type = TestEvent
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
     g = Graph(directed=True)
 
     a = ast_DataFrame(df)
-    g = ast_to_graph(a, q_mock, g, t_mock)
+    g = ast_to_graph(a, g, t_mock)
 
     vertexes = g.vs()
     assert len(vertexes) == 1
@@ -61,7 +58,7 @@ def test_xaod_table_type(mocker):
     info = get_v_info(vtx)
     assert info.v_type == Iterable[TestEvent]
     assert info.node is a
-    assert info.level == 1
+    assert info.level == 0
     seq = info.sequence
     assert isinstance(seq, root_sequence_transform)
     assert seq.eds is df
@@ -79,9 +76,8 @@ def test_xaod_table_not_first(mocker):
     a2 = ast_DataFrame(df)
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
     with pytest.raises(FuncADLTablesException):
-        ast_to_graph(a2, q_mock, g, t_mock)
+        ast_to_graph(a2, g, t_mock)
 
 
 def test_xaod_table_same_twice(mocker):
@@ -94,9 +90,8 @@ def test_xaod_table_same_twice(mocker):
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], node=a))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
 
-    g = ast_to_graph(a, q_mock, g, t_mock)
+    g = ast_to_graph(a, g, t_mock)
 
     vertexes = g.vs()
     assert len(vertexes) == 1
@@ -107,12 +102,11 @@ def test_xaod_table_not_xaod_table(mocker):
     df = mocker.MagicMock(spec=DataFrame)
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
     g = Graph(directed=True)
 
     a = ast_DataFrame(df)
     with pytest.raises(FuncADLTablesException):
-        ast_to_graph(a, q_mock, g, t_mock)
+        ast_to_graph(a, g, t_mock)
 
 
 def test_attribute_known_list(mocker):
@@ -126,13 +120,10 @@ def test_attribute_known_list(mocker):
     t_mock.callable_type.return_value = ([], float)
     t_mock.iterable_object.return_value = TestEvent
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
-
     g = Graph(directed=True)
     a_vtx = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], a))
 
-    ast_to_graph(pt, q_mock, g, t_mock)
+    ast_to_graph(pt, g, t_mock)
 
     vertexes = g.vs()
     assert len(vertexes) == 2
@@ -152,10 +143,10 @@ def test_attribute_known_list(mocker):
     assert attr_vtx.node is pt
     assert attr_vtx.level == 1
     seq = attr_vtx.sequence
-    assert isinstance(seq, sequence_transform)
+    assert isinstance(seq, expression_transform)
 
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: e1000.AFloat()")) == seq.sequence(base, {a: ast.Name(id='e1000')})
+    assert MatchAST("e1000.AFloat()") \
+        == seq.render_ast({a: ast.Name(id='e1000')})
 
 
 def test_attribute_non_iterable_object(mocker):
@@ -168,13 +159,11 @@ def test_attribute_non_iterable_object(mocker):
     t_mock.callable_type.return_value = ([], float)
     t_mock.iterable_object.return_value = None
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-
     g = Graph(directed=True)
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), TestEvent, a))
 
     with pytest.raises(FuncADLTablesException):
-        ast_to_graph(pt, q_mock, g, t_mock)
+        ast_to_graph(pt, g, t_mock)
 
 
 def test_attribute_with_args_not_given(mocker):
@@ -187,13 +176,11 @@ def test_attribute_with_args_not_given(mocker):
     t_mock.callable_type.return_value = (None, None)
     t_mock.iterable_object.return_value = TestEvent
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-
     g = Graph(directed=True)
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], a))
 
     with pytest.raises(FuncADLTablesException):
-        ast_to_graph(pt, q_mock, g, t_mock)
+        ast_to_graph(pt, g, t_mock)
 
 
 def test_attribute_default(mocker):
@@ -206,13 +193,11 @@ def test_attribute_default(mocker):
     t_mock.callable_type.return_value = ([float], float)
     t_mock.iterable_object.return_value = TestEvent
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-
     g = Graph(directed=True)
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], a))
 
     with pytest.raises(FuncADLTablesException):
-        ast_to_graph(pt, q_mock, g, t_mock)
+        ast_to_graph(pt, g, t_mock)
 
 
 def test_attribute_implied_loop(mocker):
@@ -241,13 +226,10 @@ def test_attribute_implied_loop(mocker):
 
     t_mock.iterable_object.side_effect = iterator_unroll
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
-
     g = Graph(directed=True)
     a_vtx = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[Jets]], a))
 
-    ast_to_graph(pt, q_mock, g, t_mock)
+    ast_to_graph(pt, g, t_mock)
 
     vertexes = g.vs()
     assert len(vertexes) == 2
@@ -264,10 +246,9 @@ def test_attribute_implied_loop(mocker):
     assert attr_vtx.node is pt
     assert attr_vtx.level == 2
     seq = attr_vtx.sequence
-    assert isinstance(seq, sequence_transform)
+    assert isinstance(seq, expression_transform)
 
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: e1000.pt()")) == seq.sequence(base, {a: ast.Name(id='e1000')})
+    assert MatchAST("e1000.pt()") == seq.render_ast({a: ast.Name(id='e1000')})
 
 
 @pytest.mark.parametrize("operator", [ast.FloorDiv, ast.LShift, ast.RShift, ast.BitOr, ast.BitXor, ast.BitAnd, ast.MatMult])
@@ -281,11 +262,10 @@ def test_binary_op_unsupported(operator, mocker):
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
     t_mock = mocker.MagicMock(spec=type_inspector)
 
     with pytest.raises(FuncADLTablesException) as e:
-        ast_to_graph(op, q_mock, g, t_mock)
+        ast_to_graph(op, g, t_mock)
 
     assert "Unsupported" in str(e.value)
 
@@ -308,12 +288,10 @@ def test_binary_op(operator, sym, mocker):
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
 
-    ast_to_graph(op, q_mock, g, t_mock)
+    ast_to_graph(op, g, t_mock)
 
     assert len(g.vs()) == 3
     op_v = get_v_info(list(g.vs())[-1])
@@ -323,10 +301,9 @@ def test_binary_op(operator, sym, mocker):
     assert op_v.level == 1
 
     seq = op_v.sequence
-    assert isinstance(seq, sequence_transform)
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select(f"lambda e1000: e1000 {sym} e2000")) \
-        == seq.sequence(base, {a: astIteratorPlaceholder(), b: ast.Name(id='e2000')})
+    assert isinstance(seq, expression_transform)
+    assert MatchAST(f"e1000 {sym} e2000") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
 
 
 def test_binary_two_levels_down(mocker):
@@ -339,12 +316,10 @@ def test_binary_two_levels_down(mocker):
     g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], a))
     g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], b))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.find_broadcast_level_for_args.return_value = (2, (float, float))
 
-    ast_to_graph(op, q_mock, g, t_mock)
+    ast_to_graph(op, g, t_mock)
 
     assert len(g.vs()) == 3
     op_v = get_v_info(list(g.vs())[-1])
@@ -354,10 +329,9 @@ def test_binary_two_levels_down(mocker):
     assert op_v.level == 2
 
     seq = op_v.sequence
-    assert isinstance(seq, sequence_transform)
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: e1000 + e2000")) \
-        == seq.sequence(base, {a: astIteratorPlaceholder(), b: ast.Name(id='e2000')})
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("e1000 + e2000") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
     t_mock.find_broadcast_level_for_args.assert_called_with((Union[float, int], Union[float, int]),
                                                             (Iterable[Iterable[float]], Iterable[Iterable[float]]))
 
@@ -378,13 +352,11 @@ def test_binary_bad_type(mocker):
     g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], a))
     g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[Jet]], b))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.find_broadcast_level_for_args.return_value = None
 
     with pytest.raises(FuncADLTablesException) as e:
-        ast_to_graph(op, q_mock, g, t_mock)
+        ast_to_graph(op, g, t_mock)
 
     assert 'Unable to figure out' in str(e)
 
@@ -419,12 +391,10 @@ def test_binary_types(t_left, operator, t_right, t_result, mocker):
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[t_left], a))
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[t_right], b))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.find_broadcast_level_for_args.return_value = (1, (t_left, t_right))
 
-    ast_to_graph(op, q_mock, g, t_mock)
+    ast_to_graph(op, g, t_mock)
 
     op_v = get_v_info(list(g.vs())[-1])
 
@@ -439,14 +409,12 @@ def test_function_single_arg(mocker):
     g['info'] = g_info([])
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
     t_mock.find_broadcast_level_for_args.return_value = (1, (float,))
 
-    ast_to_graph(c, q_mock, g, t_mock)
+    ast_to_graph(c, g, t_mock)
 
     assert len(g.vs()) == 2
     call_v = get_v_info(list(g.vs())[-1])
@@ -456,10 +424,9 @@ def test_function_single_arg(mocker):
     assert call_v.level == 1
 
     seq = call_v.sequence
-    assert isinstance(seq, sequence_transform)
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: my_func(e1000)")) \
-        == seq.sequence(base, {a: astIteratorPlaceholder()})
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("my_func(e1000)") \
+        == seq.render_ast({a: ast.Name(id='e1000')})
 
     t_mock.static_function_type.assert_called_with(g['info'].global_types, "my_func")
 
@@ -474,14 +441,12 @@ def test_function_two_arg(mocker):
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float, float], float]
     t_mock.callable_type.return_value = ([float, float], float)
     t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
 
-    ast_to_graph(c, q_mock, g, t_mock)
+    ast_to_graph(c, g, t_mock)
 
     assert len(g.vs()) == 3
     call_v = get_v_info(list(g.vs())[-1])
@@ -491,10 +456,9 @@ def test_function_two_arg(mocker):
     assert call_v.level == 1
 
     seq = call_v.sequence
-    assert isinstance(seq, sequence_transform)
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: my_func(e1000, e2000)")) \
-        == seq.sequence(base, {a: astIteratorPlaceholder(), b: ast.Name(id='e2000')})
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("my_func(e1000, e2000)") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
 
 
 def test_function_single_arg_level2(mocker):
@@ -505,14 +469,12 @@ def test_function_single_arg_level2(mocker):
     g['info'] = g_info([])
     g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
     t_mock.find_broadcast_level_for_args.return_value = (2, (float,))
 
-    ast_to_graph(c, q_mock, g, t_mock)
+    ast_to_graph(c, g, t_mock)
 
     assert len(g.vs()) == 2
 
@@ -525,13 +487,11 @@ def test_function_unknown(mocker):
     g['info'] = g_info([])
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = None
 
     with pytest.raises(FuncADLTablesException) as e:
-        ast_to_graph(c, q_mock, g, t_mock)
+        ast_to_graph(c, g, t_mock)
 
     assert "my_func" in str(e.value)
 
@@ -544,15 +504,13 @@ def test_function_wrong_level(mocker):
     g['info'] = g_info([])
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], a))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
     t_mock.find_broadcast_level_for_args.return_value = (2, (float,))
 
     with pytest.raises(FuncADLTablesException) as e:
-        ast_to_graph(c, q_mock, g, t_mock)
+        ast_to_graph(c, g, t_mock)
 
     assert "my_func" in str(e.value)
     assert "dimensions" in str(e.value)
@@ -566,15 +524,13 @@ def test_function_number_args(mocker):
     g['info'] = g_info([])
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float, float], float]
     t_mock.callable_type.return_value = ([float, float], float)
     t_mock.find_broadcast_level_for_args.return_value = None
 
     with pytest.raises(FuncADLTablesException) as e:
-        ast_to_graph(c, q_mock, g, t_mock)
+        ast_to_graph(c, g, t_mock)
 
     assert "my_func" in str(e.value)
 
@@ -589,15 +545,13 @@ def test_function_placeholder(mocker):
     g = Graph(directed=True)
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.callable_signature.return_value = Callable[[float], float]
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
     t_mock.find_broadcast_level_for_args.return_value = (1, (float,))
 
-    ast_to_graph(c, q_mock, g, t_mock)
+    ast_to_graph(c, g, t_mock)
 
     assert len(g.vs()) == 2
     call_v = get_v_info(list(g.vs())[-1])
@@ -607,10 +561,9 @@ def test_function_placeholder(mocker):
     assert call_v.level == 1
 
     seq = call_v.sequence
-    assert isinstance(seq, sequence_transform)
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: func1(e1000)")) \
-        == seq.sequence(base, {a: astIteratorPlaceholder()})
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("func1(e1000)") \
+        == seq.render_ast({a: ast.Name(id='e1000')})
 
     t_mock.callable_signature.assert_called_with(func1, False)
 
@@ -625,15 +578,13 @@ def test_function_placeholder_no_return_type(mocker):
     g = Graph(directed=True)
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.callable_signature.return_value = Callable[[float], None]
     t_mock.callable_type.return_value = ([float], None)
     t_mock.find_broadcast_level_for_args.return_value = (1, (float,))
 
     with pytest.raises(FuncADLTablesException) as e:
-        ast_to_graph(c, q_mock, g, t_mock)
+        ast_to_graph(c, g, t_mock)
 
     assert "return type" in str(e.value)
     assert "func1" in str(e.value)
@@ -649,9 +600,6 @@ def test_map(mocker):
     g = Graph(directed=True)
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Jets], a))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.return_value = 'e1000'
-
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.attribute_type.return_value = Callable[[], float]
     t_mock.callable_type.return_value = ([], float)
@@ -661,7 +609,7 @@ def test_map(mocker):
     context._lookup_dataframe(df_a)
     context._resolve_ast(a)
 
-    ast_to_graph(c, q_mock, g, t_mock, context=context)
+    ast_to_graph(c, g, t_mock, context=context)
 
     assert len(g.vs()) == 2
     call_v = get_v_info(list(g.vs())[-1])
@@ -672,10 +620,9 @@ def test_map(mocker):
     assert call_v.level == 1
 
     seq = call_v.sequence
-    assert isinstance(seq, sequence_transform)
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1000: e1000.pt()")) \
-        == seq.sequence(base, {a: astIteratorPlaceholder()})
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("e1000.pt()") \
+        == seq.render_ast({a: ast.Name(id='e1000')})
 
 
 # TODO: When we get the j.pt in test_double_map return with argument of [float, float] -> [float] but supply
@@ -701,9 +648,6 @@ def test_double_map(mocker):
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Jets], a))
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Tracks], b))
 
-    q_mock = mocker.MagicMock(spec=QueryVarTracker)
-    q_mock.new_var_name.side_effect = ['e1000', 'e1001', 'e1002']
-
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[], float]
     t_mock.callable_type.return_value = ([], float)
@@ -716,7 +660,7 @@ def test_double_map(mocker):
     context._resolve_ast(a)
     context._resolve_ast(b)
 
-    ast_to_graph(c, q_mock, g, t_mock, context=context)
+    ast_to_graph(c, g, t_mock, context=context)
 
     assert len(g.vs()) == 5
     # 2 are the ones we added
@@ -729,9 +673,8 @@ def test_double_map(mocker):
     assert call_add.v_type == Iterable[float]
     assert len(list(add_v.neighbors(mode='out')))
     left_v, right_v = list(add_v.neighbors(mode='out'))
-    base = ObjectStream(ast.Name(id='dude'))
-    assert MatchObjectSequence(base.Select("lambda e1002: e1002 + e1005")) \
-        == call_add.sequence.sequence(base, {get_v_info(left_v).node: astIteratorPlaceholder(), get_v_info(right_v).node: ast.Name('e1005')})
+    assert MatchAST("e1000 + e1001") \
+        == call_add.sequence.render_ast({get_v_info(left_v).node: ast.Name(id='e1000'), get_v_info(right_v).node: ast.Name(id='e1001')})
 
     assert get_v_info(left_v).v_type == Iterable[float]
     assert get_v_info(right_v).v_type == Iterable[float]

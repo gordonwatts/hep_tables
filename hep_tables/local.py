@@ -115,7 +115,7 @@ async def _new_make_local_async(df: DataFrame) -> Any:
 
     # Turn the expression into a graph, and get the func_adl sequence for it.
     qt = QueryVarTracker()
-    g = ast_to_graph(expression, qt, context=context)
+    g = ast_to_graph(expression, context=context)
     run_linear_reduction(g, qt)
     o_stream = build_linq_expression(g)
 

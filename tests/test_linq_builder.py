@@ -1,28 +1,13 @@
 import ast
-from hep_tables.graph_info import e_info, v_info
-from typing import Any, Dict
+from tests.conftest import MatchASTDict
+from typing import Any
 
 from igraph import Graph
 
+from hep_tables.graph_info import e_info, v_info
 from hep_tables.linq_builder import build_linq_expression
-from hep_tables.transforms import astIteratorPlaceholder, sequence_transform
-
-
-class MatchASTDict:
-    def __init__(self, true_dict: Dict[ast.AST, ast.AST]):
-        self._true = true_dict
-
-    def __eq__(self, o: object) -> bool:
-        if not isinstance(o, dict):
-            return False
-
-        if len(o) != len(self._true):
-            return False
-
-        if set(o.keys()) != set(self._true.keys()):
-            return False
-
-        return all(ast.dump(o[k]) == ast.dump(self._true[k]) for k in self._true.keys())
+from hep_tables.transforms import sequence_predicate_base
+from hep_tables.util_ast import astIteratorPlaceholder
 
 
 def test_just_the_source(mock_root_sequence_transform):
@@ -45,7 +30,7 @@ def test_source_and_single_generator(mocker, mock_root_sequence_transform):
     level_0 = g.add_vertex(info=v_info(1, root_seq, Any, a1))
 
     a2 = ast.Constant(10)
-    seq_met = mocker.MagicMock(spec=sequence_transform)
+    seq_met = mocker.MagicMock(spec=sequence_predicate_base)
     proper_return = mine.Select("lambda e1: e1.met")
     seq_met.sequence.return_value = proper_return
     level_1 = g.add_vertex(info=v_info(1, seq_met, Any, a2))
@@ -56,3 +41,23 @@ def test_source_and_single_generator(mocker, mock_root_sequence_transform):
 
     assert r is proper_return
     seq_met.sequence.assert_called_with(mine, MatchASTDict({a1: astIteratorPlaceholder()}))
+
+
+def test_level_appropriate(mocker, mock_root_sequence_transform):
+    'Make sure we call with an extra level down in the ast placeholder'
+    mine, a1, root_seq = mock_root_sequence_transform
+    g = Graph(directed=True)
+    level_0 = g.add_vertex(info=v_info(1, root_seq, Any, {a1: astIteratorPlaceholder([1])}))
+
+    a2 = ast.Constant(10)
+    seq_met = mocker.MagicMock(spec=sequence_predicate_base)
+    proper_return = mine.Select("lambda e1: e1.met")
+    seq_met.sequence.return_value = proper_return
+    level_1 = g.add_vertex(info=v_info(1, seq_met, Any, a2))
+
+    g.add_edge(level_1, level_0, info=e_info(True))
+
+    build_linq_expression(g)
+
+    passed_dict = seq_met.sequence.call_args[0][1]
+    assert len(passed_dict[a1].levels) == 2

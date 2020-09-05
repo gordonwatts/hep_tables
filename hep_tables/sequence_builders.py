@@ -1,5 +1,5 @@
 import ast
-from typing import Iterable, List, Optional, Type, Union, cast
+from typing import Iterable, Optional, Type, Union, cast
 
 from dataframe_expressions.asts import ast_Callable, ast_DataFrame, ast_FunctionPlaceholder
 from dataframe_expressions.render_dataframe import render_callable, render_context
@@ -8,12 +8,11 @@ from igraph import Graph, Vertex  # type: ignore
 from hep_tables.exceptions import FuncADLTablesException
 from hep_tables.graph_info import e_info, get_g_info, get_v_info, v_info
 from hep_tables.hep_table import xaod_table
-from hep_tables.transforms import root_sequence_transform, sequence_transform
+from hep_tables.transforms import expression_transform, root_sequence_transform
 from hep_tables.type_info import type_inspector
-from hep_tables.utils import QueryVarTracker
 
 
-def ast_to_graph(a: ast.AST, qt: QueryVarTracker,
+def ast_to_graph(a: ast.AST,
                  g_in: Optional[Graph] = None,
                  type_system: Optional[type_inspector] = None,
                  context: Optional[render_context] = None) -> Graph:
@@ -22,7 +21,9 @@ def ast_to_graph(a: ast.AST, qt: QueryVarTracker,
 
     Args:
         a (ast.AST): The ast from the `render` in `dataframe_expressions`
-        g (Graph): The `Graph` under construction, or none if it hasn't been started yet.
+        g_in (Graph): The `Graph` under construction, or none if it hasn't been started yet.
+        type_system (type_inspector): Object we can use to examine and resolve needed types
+        context (render_context): Object used to help with rendering sub-expressions as we see them.
 
     Returns:
         Graph: Returned computational graph
@@ -30,16 +31,15 @@ def ast_to_graph(a: ast.AST, qt: QueryVarTracker,
     g_out = g_in if g_in is not None else Graph(directed=True)
     context = context if context is not None else render_context()
     type_system = type_system if type_system is not None else type_inspector()
-    _translate_to_sequence(g_out, type_system, qt, context).visit(a)
+    _translate_to_sequence(g_out, type_system, context).visit(a)
     return g_out
 
 
 class _translate_to_sequence(ast.NodeVisitor):
-    def __init__(self, g: Graph, t_info: type_inspector, qt: QueryVarTracker, context: render_context):
+    def __init__(self, g: Graph, t_info: type_inspector, context: render_context):
         super().__init__()
         self._g = g
         self._t_inspect = t_info
-        self._qt = qt
         self._context = context
 
     def visit(self, node: ast.AST) -> None:
@@ -96,9 +96,8 @@ class _translate_to_sequence(ast.NodeVisitor):
             seq_out_type = Iterable[seq_out_type]  # type: ignore
 
         # Code this up as a call, propagating the sequence return type.
-        arg_name = self._qt.new_var_name()
         function_call = ast.Call(func=ast.Attribute(value=node.value, attr=node.attr), args=[], keywords=[])
-        t = sequence_transform([node.value], arg_name, function_call)
+        t = expression_transform(function_call)
 
         v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, node))
         self._g.add_edge(v, v_source, info=e_info(True))
@@ -148,9 +147,8 @@ class _translate_to_sequence(ast.NodeVisitor):
             return_type = Iterable[return_type]
 
         # And build the statement that will do the transform.
-        l_arg = self._qt.new_var_name()
         l_func_body = ast.BinOp(left=node.left, op=node.op, right=node.right)
-        s = sequence_transform([node.left, node.right], l_arg, l_func_body)
+        s = expression_transform(l_func_body)
 
         # Create the vertex and connect to a and b via edges
         op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, node))
@@ -174,7 +172,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         if not isinstance(df, xaod_table):
             raise FuncADLTablesException('func_adl_tables needs an xaod_table as the root')
 
-        self._g.add_vertex(info=v_info(1,
+        self._g.add_vertex(info=v_info(0,
                                        root_sequence_transform(df),
                                        Iterable[df.table_type],  # type: ignore
                                        node))
@@ -288,7 +286,7 @@ class _translate_to_sequence(ast.NodeVisitor):
             raise FuncADLTablesException(f'In order to call {func_name}({arg_types}), all items need to have the same number of array dimensions.')
 
         # Ok - since this works, lets build the function.
-        seq = sequence_transform(cast(List[ast.AST], node.args), self._qt.new_var_name(), transform_body)
+        seq = expression_transform(transform_body)
         for i in range(level):
             return_type = Iterable[return_type]  # type: ignore
         v_i = v_info(level, seq, return_type, node)

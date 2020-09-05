@@ -1,11 +1,10 @@
 import ast
-from hep_tables.graph_info import v_info
 import logging
 import os
 import shutil
 import tempfile
 from json import dumps, loads
-from typing import Any, Callable, Union
+from typing import Any, Callable, Dict, Optional, Union
 from unittest import mock
 
 import asyncmock
@@ -17,8 +16,11 @@ from func_adl.object_stream import ObjectStream
 from servicex import ServiceXDataset, clean_linq
 
 import hep_tables.local as hep_local
+from hep_tables.graph_info import v_info
 from hep_tables.hep_table import xaod_table
-from hep_tables.transforms import astIteratorPlaceholder, root_sequence_transform, sequence_predicate_base
+from hep_tables.transforms import (root_sequence_transform,
+                                   sequence_predicate_base)
+from hep_tables.util_ast import astIteratorPlaceholder
 from hep_tables.utils import QueryVarTracker
 
 # dump out logs
@@ -60,13 +62,29 @@ def servicex_ds(mocker):
     return x
 
 
-def mock_vinfo(mocker, level: int = 0, node: ast.AST = None, seq: sequence_predicate_base = None, order: int = 0):
+def mock_vinfo(mocker, level: int = 0, node: Optional[Union[ast.AST, Dict[ast.AST, ast.AST]]] = None, seq: sequence_predicate_base = None, order: int = 0):
     info = mocker.MagicMock(spec=v_info)
     info.level = level
-    info.node = node
-    info.node_as_dict = {node: astIteratorPlaceholder()}
     info.sequence = seq
     info.order = order
+
+    p_node = mocker.PropertyMock()
+    type(info).node = p_node
+    p_node_as_dict = mocker.PropertyMock()
+    type(info).node_as_dict = p_node_as_dict
+    if isinstance(node, ast.AST):
+        p_node.return_value = node
+        p_node_as_dict.return_value = {node: astIteratorPlaceholder()}
+    else:
+        if node == None:
+            p_node.side_effect = Exception('node was not specified')
+            p_node_as_dict.side_effect = Exception('not was not specified')
+        elif len(node) == 1:
+            p_node.return_value = list(node.keys())[0]
+            p_node_as_dict.return_value = node
+        else:
+            p_node.side_effect = Exception('node will not work with multi node asts')
+            p_node_as_dict.return_value = node
     return info
 
 
@@ -93,10 +111,23 @@ def mock_root_sequence_transform(mocker):
     return mine, a, root_seq
 
 
+def parse_ast_string(s: str) -> ast.AST:
+    class replace_it(ast.NodeTransformer):
+        def visit_Name(self, node: ast.Name) -> ast.AST:
+            if node.id == 'astIteratorPlaceholder':
+                return astIteratorPlaceholder()
+            else:
+                return node
+    return replace_it().visit(ast.parse(s).body[0].value)  # type:ignore
+
+
 class MatchAST:
-    def __init__(self, true_ast: ast.AST):
+    def __init__(self, true_ast: Union[str, ast.AST]):
         '''Match object for an ast'''
-        self._true_ast = true_ast
+        if isinstance(true_ast, str):
+            self._true_ast = parse_ast_string(true_ast)
+        else:
+            self._true_ast = true_ast
 
     def clean(self, a: Union[str, ast.AST]):
         base_string = ast.dump(a) if isinstance(a, ast.AST) else a
@@ -113,6 +144,23 @@ class MatchAST:
             print(f'test: {other_ast}')
             return False
         return True
+
+
+class MatchASTDict:
+    def __init__(self, true_dict: Dict[ast.AST, ast.AST]):
+        self._true = true_dict
+
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, dict):
+            return False
+
+        if len(o) != len(self._true):
+            return False
+
+        if set(o.keys()) != set(self._true.keys()):
+            return False
+
+        return all(ast.dump(o[k]) == ast.dump(self._true[k]) for k in self._true.keys())
 
 
 class MatchObjectSequence:

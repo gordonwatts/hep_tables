@@ -1,13 +1,17 @@
-from typing import Dict, List, Optional, Type, cast, Union
-from igraph import Graph, Vertex, Edge  # type: ignore
 import ast
-from .transforms import astIteratorPlaceholder, sequence_predicate_base
+from typing import Dict, List, Optional, Type, Union, cast
+
+from igraph import Edge, Graph, Vertex  # type: ignore
+
+from hep_tables.util_ast import astIteratorPlaceholder
+
+from .transforms import expression_predicate_base
 
 
 class v_info:
     '''Information attached to a vertex
     '''
-    def __init__(self, level: int, seq: sequence_predicate_base, v_type: Type, node: Union[ast.AST, Dict[ast.AST, ast.AST]], order: int = 0):
+    def __init__(self, level: int, seq: expression_predicate_base, v_type: Type, node: Union[ast.AST, Dict[ast.AST, ast.AST]], order: int = 0):
         '''Create an object to hold the metadata associated with a vertex in our processing graph.
 
         Args:
@@ -39,7 +43,7 @@ class v_info:
         return self._level
 
     @property
-    def sequence(self) -> sequence_predicate_base:
+    def sequence(self) -> expression_predicate_base:
         return self._seq
 
     @property
@@ -125,12 +129,15 @@ def get_v_info(v: Vertex) -> v_info:
     return cast(v_info, v['info'])
 
 
-def copy_v_info(old: v_info, new_level: Optional[int] = None, new_sequence: Optional[sequence_predicate_base] = None):
+def copy_v_info(old: v_info,
+                new_level: Optional[int] = None,
+                new_sequence: Optional[expression_predicate_base] = None,
+                new_node: Optional[Union[ast.AST, Dict[ast.AST, ast.AST]]] = None):
     new_level = old.level if new_level is None else new_level
     new_seq = old.sequence if new_sequence is None else new_sequence
+    new_node = old.node_as_dict if new_node is None else new_node
 
     new_order = old.order
-    new_node = old.node_as_dict
     new_type = old.v_type
 
     return v_info(new_level, new_seq, new_type, new_node, new_order)

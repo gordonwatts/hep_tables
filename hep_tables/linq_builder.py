@@ -1,11 +1,12 @@
-from hep_tables.graph_info import get_v_info
-from typing import Optional, Union, Dict
 import ast
+from hep_tables.util_ast import add_level_to_holder
+from typing import Dict, Optional
 
 from func_adl.object_stream import ObjectStream
 from igraph import Graph
 
-from hep_tables.transforms import astIteratorPlaceholder
+from hep_tables.graph_info import get_v_info
+from hep_tables.transforms import sequence_predicate_base
 from hep_tables.util_graph import depth_first_traversal
 
 
@@ -26,22 +27,11 @@ def build_linq_expression(exp_graph: Graph) -> ObjectStream:
         v = vertices_at_step[0]
 
         v_meta = get_v_info(v)
-        build_sequence = v_meta.sequence.sequence(build_sequence, ast_dict)
-        ast_dict = v_meta.node_as_dict
+        seq = v_meta.sequence
+        assert isinstance(seq, sequence_predicate_base), 'Internal error - everything should be by now'
+        build_sequence = seq.sequence(build_sequence, ast_dict)
+        ast_dict = {k: add_level_to_holder().visit(v)
+                    for k, v in v_meta.node_as_dict.items()}
 
     assert build_sequence is not None
     return build_sequence
-
-
-def _as_dict(ast_info: Union[ast.AST, Dict[ast.AST, ast.AST]]) -> Dict[ast.AST, ast.AST]:
-    '''Make sure that the incoming argument is a dict of ast place holders
-
-    Args:
-        ast_info (Union[ast.AST, Dict[ast.AST, ast.AST]]): Argument to be converted into a dict, if needed
-
-    Returns:
-        Dict[ast.AST, ast.AST]: A resulting dict with everything needed.
-    '''
-    if isinstance(ast_info, ast.AST):
-        return {ast_info: astIteratorPlaceholder()}
-    return ast_info
