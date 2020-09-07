@@ -106,6 +106,12 @@ def test_replace_holder_with_levels():
     assert MatchAST("dude[1]") == new_a
 
 
+def test_replace_holder_with_none():
+    a = astIteratorPlaceholder([0, None])
+    new_a = replace_holder('dude').visit(a)
+    assert MatchAST("dude") == new_a
+
+
 def test_replace_burried_holder():
     a = ast.Attribute(value=astIteratorPlaceholder([0]), attr='fork')
     new_a = replace_holder('dude').visit(a)

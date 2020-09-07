@@ -7,7 +7,7 @@ from func_adl.object_stream import ObjectStream
 from func_adl.util_ast import lambda_build
 
 from hep_tables.hep_table import xaod_table
-from hep_tables.util_ast import astIteratorPlaceholder, reduce_holder_by_level, replace_holder
+from hep_tables.util_ast import astIteratorPlaceholder, reduce_holder_by_level, replace_ast, replace_holder
 
 
 class expression_predicate_base(ABC):
@@ -48,13 +48,7 @@ class expression_transform(expression_predicate_base):
         Returns:
             ast.AST: New AST with the replacements done.
         '''
-        class replace_ast(CloningNodeTransformer):
-            def generic_visit(self, node: ast.AST) -> Optional[ast.AST]:
-                if node in ast_replacements:
-                    return ast_replacements[node]
-                return super().generic_visit(node)
-
-        return replace_ast().visit(self._exp)
+        return replace_ast(ast_replacements).visit(self._exp)
 
 
 class expression_tuple(expression_predicate_base):
@@ -119,7 +113,7 @@ class sequence_predicate_base(expression_predicate_base):
 class sequence_downlevel(sequence_predicate_base):
     '''Hold onto a transform that has to be processed one level down (a nested select
     statement that allows us to access an array of an array)'''
-    def __init__(self, transform: expression_predicate_base, var_name: str):
+    def __init__(self, transform: expression_predicate_base, var_name: str, main_seq_ast: Optional[ast.AST] = None):
         '''Create a transform that will operate on the items in an array that is in the current sequence.
 
         `b: b.Select(j: transform(j))`
@@ -127,14 +121,20 @@ class sequence_downlevel(sequence_predicate_base):
         Args:
             transform (sequence_predicate_base): The transform to operate on the array of array elements in the stream.
             var_name (str): The name of the variable we will use in our Select statement.
+            main_seq_ast (ast.AST): The AST that represents the main sequence we are iterating over.
 
         '''
         self._transform = transform
         self._var_name = var_name
+        self._main_seq = main_seq_ast
 
     @property
     def transform(self) -> expression_predicate_base:
         return self._transform
+
+    @property
+    def sequence_ast(self) -> Optional[ast.AST]:
+        return self._main_seq
 
     def sequence(self, sequence: Optional[ObjectStream], seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
         '''Render the sub-expression and run a Select on the item
@@ -163,8 +163,11 @@ class sequence_downlevel(sequence_predicate_base):
             ast.AST: The ast that represents this downlevel. A place holder will be in
             the select call.
         '''
-        o = ObjectStream(astIteratorPlaceholder())
-        return self.sequence(o, ast_replacements)._ast
+        assert self._main_seq is not None, 'Internal: Must have a main sequence to properly render_ast'
+        seq_repl = replace_ast(ast_replacements).visit(self._main_seq)
+        o = ObjectStream(seq_repl)
+        rendered_ast = self.sequence(o, ast_replacements)._ast
+        return rendered_ast
 
 
 def name_seq_argument(seq_dict: Dict[ast.AST, ast.AST], new_name: str) -> Dict[ast.AST, ast.AST]:

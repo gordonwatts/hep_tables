@@ -72,6 +72,7 @@ def test_root_sequence_apply(mocker):
 
 
 def test_downlevel_one_sequence(mocker):
+    'Test a simple constant for the transform - sequence'
     s = mocker.MagicMock(spec=expression_predicate_base)
     s.render_ast.return_value = ast.Num(n=1.0)
     down = sequence_downlevel(s, "e1000")
@@ -87,10 +88,10 @@ def test_downlevel_one_sequence(mocker):
 
 
 def test_downlevel_one_ast(mocker):
-    'Downlevel should build a Select statement'
+    'Test a simple constant for the transform - render_ast'
     s = mocker.MagicMock(spec=expression_predicate_base)
     s.render_ast.return_value = ast.Num(n=1.0)
-    down = sequence_downlevel(s, "e1000")
+    down = sequence_downlevel(s, "e1000", astIteratorPlaceholder())
 
     my_dict = {}
     rendered = down.render_ast(my_dict)
@@ -99,12 +100,30 @@ def test_downlevel_one_ast(mocker):
     s.render_ast.assert_called_with(my_dict)
 
 
-def test_downlevel_with_index_Zero(mocker):
-    'Downlevel should do an index sub correctly'
+def test_downlevel_with_index_one(mocker):
+    'Pass in a single index down'
+    s = mocker.MagicMock(spec=expression_predicate_base)
+    a_ref = ast.Num(n=1.0)
+    s.render_ast.return_value = ast.Name('e1001')
+    down = sequence_downlevel(s, "e1001", a_ref)
+
+    my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder([0])}
+    rendered = down.render_ast(my_dict)
+
+    assert MatchAST("Select(astIteratorPlaceholder, lambda e1001: e1001)") == rendered
+    c_args = s.render_ast.call_args[0][0]
+    assert a_ref in c_args
+    v = c_args[a_ref]
+    assert isinstance(v, astIteratorPlaceholder)
+    assert v.levels == []
+
+
+def test_downlevel_with_index_two(mocker):
+    'Pass in a single index down'
     s = mocker.MagicMock(spec=expression_predicate_base)
     a_ref = ast.Num(n=1.0)
     s.render_ast.return_value = ast.Subscript(value=ast.Name('e1001'), slice=ast.Index(value=ast.Num(n=0)))
-    down = sequence_downlevel(s, "e1001")
+    down = sequence_downlevel(s, "e1001", a_ref)
 
     my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder([0, 1])}
     rendered = down.render_ast(my_dict)
@@ -120,7 +139,7 @@ def test_downlevel_with_index_Zero(mocker):
 def test_downlevel_two_ast(mocker):
     s = mocker.MagicMock(spec=expression_predicate_base)
     s.render_ast.return_value = parse_ast_string("Select(astIteratorPlaceholder, lambda e1000: 1.0)")
-    down = sequence_downlevel(s, "e1001")
+    down = sequence_downlevel(s, "e1001", astIteratorPlaceholder())
 
     my_dict = {}
     rendered = down.render_ast(my_dict)

@@ -68,7 +68,7 @@ class replace_holder(CloningNodeTransformer):
             self._v = v_name
 
     def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> ast.AST:
-        if len(node.levels) == 0:
+        if len(node.levels) == 0 or node.levels[-1] is None:
             return self._v
         else:
             return ast.Subscript(value=self._v, slice=ast.Index(value=ast.Num(n=node.levels[-1])))
@@ -110,3 +110,24 @@ def reduce_holder_by_level(d: Dict[ast.AST, ast.AST]) -> Dict[ast.AST, ast.AST]:
 
     c = drop_holder_by_level()
     return {k: c.visit(v) for k, v in d.items()}
+
+
+class replace_ast(CloningNodeTransformer):
+    '''Replace any ast we know about in the dict  with a
+    ast in the dict.
+    '''
+    def __init__(self, repl: Dict[ast.AST, ast.AST]):
+        '''Create a replacer that will re-build any ast visited by
+        it using a replacement found in the dictionary we have of ast's.
+
+        Args:
+            repl (Dict[ast.AST, ast.AST]): The dictionary of one ast to be replaced with
+            the other.
+        '''
+        super().__init__()
+        self._replace = repl
+
+    def generic_visit(self, node: ast.AST) -> Optional[ast.AST]:
+        if node in self._replace:
+            return self._replace[node]
+        return super().generic_visit(node)
