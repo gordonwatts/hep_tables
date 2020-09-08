@@ -79,7 +79,7 @@ def test_double_map(servicex_ds):
     assert MatchQastleSequence(lambda f: f
                                .Select("lambda e1: (e1.tracks(), e1.jets())")
                                .Select("lambda e2: (e2[0].Select(lambda j: (j.phi(), j.eta())), e2[1].Select(lambda t: (t.eta(), t.phi())))")
-                               .Select("lambda e4: e4.Select(lambda e5: DeltaR(e5[0][0], e5[0][1], e5[1][0], e5[1][1]))")
+                               .Select("lambda e4: e4[0].Select(lambda e5: e4[1].Select(lambda e6: DeltaR(e5[0], e5[1], e6[0], e6[1])))")
                                ) == extract_selection(servicex_ds)
 
 
