@@ -55,7 +55,8 @@ def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
         vs_meta = get_v_info(v)
         main_seq = [e for e in v.out_edges() if get_e_info(e).main]
         assert len(main_seq) == 1, f'Internal error - only one edge can be labeled main_seq (not {len(main_seq)})'
-        main_seq_ast = get_v_info(main_seq[0].target_vertex).node
+        main_seq_asts = get_v_info(main_seq[0].target_vertex).node_as_dict
+        main_seq_ast = list(main_seq_asts.keys())[0]
         new_seq = sequence_downlevel(vs_meta.sequence, qv.new_var_name(), main_seq_ast)
         new_node_dict = {k: add_level_to_holder().visit(v) for k, v in vs_meta.node_as_dict.items()}
         v['info'] = copy_v_info(vs_meta, new_sequence=new_seq, new_level=level - 1, new_node=new_node_dict)

@@ -117,6 +117,29 @@ def test_downlevel_one_sequence(mocker, mock_root_sequence_transform, mock_qt):
     assert get_v_info(level_2_1).level == 1
 
 
+def test_downlevel_with_combined_node(mocker, mock_qt):
+    '''Properly deal with reducing a level when the one we are reducing is represented
+    by multiple ast's. Typically - after something has gone through a reduction by tuple, for example.
+    '''
+    g = Graph(directed=True)
+    a1_1 = ast.Num(n=1)
+    a1_2 = ast.Num(n=2)
+    node_0 = g.add_vertex(info=mock_vinfo(mocker, node={a1_1: astIteratorPlaceholder(), a1_2: astIteratorPlaceholder()},
+                                          seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+
+    a2 = ast.Num(n=2)
+    node_1 = g.add_vertex(info=mock_vinfo(mocker, node=a2,
+                                          seq=mocker.MagicMock(spec=expression_transform), order=0, level=2))
+    g.add_edge(node_1, node_0, info=e_info(True))
+
+    reduce_level(g, 2, mock_qt)
+
+    assert len(g.vs()) == 2
+    info = get_v_info(node_1)
+    assert info.level == 1
+    assert len(info.node_as_dict) == 1
+
+
 def test_reduce_vertices_separate_steps(mocker, mock_qt):
     'Two vertices in different steps, same level, do not get combined'
     g = Graph(directed=True)
