@@ -1,7 +1,7 @@
 import ast
 from typing import Dict
 
-from igraph import Graph, Vertex
+from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.graph_info import e_info, get_e_info, get_v_info
 from hep_tables.graph_linq_reducers import (find_highest_level, reduce_level,
@@ -376,7 +376,6 @@ def test_two_parents_tuple_combined(mocker, mock_qt):
     g.add_edge(node_6, node_4, info=e_info(True))
     g.add_edge(node_6, node_5, info=e_info(False))
 
-
     reduce_tuple_vertices(g, 2, mock_qt)
 
     # Check that the proper node gets listed as main_seq
@@ -439,7 +438,6 @@ def test_two_parents_tuple_combined_reorder(mocker, mock_qt):
     node_6 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_6, order=0, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_6, node_4, info=e_info(True))
     g.add_edge(node_6, node_5, info=e_info(False))
-
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
