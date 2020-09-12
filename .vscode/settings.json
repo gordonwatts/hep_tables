@@ -34,6 +34,7 @@
         "igraph",
         "index'th",
         "isabstractmethod",
+        "itertools",
         "jupyter",
         "jupyterlab",
         "kwonlyargs",

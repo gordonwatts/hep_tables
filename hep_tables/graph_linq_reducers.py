@@ -1,10 +1,13 @@
+import ast
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple, Optional
+from itertools import chain
+from typing import Any, Dict, List, Optional, Tuple
 
-from igraph import Graph, Vertex, Edge  # type:ignore
+from igraph import Edge, Graph, Vertex  # type:ignore
 
-from hep_tables.graph_info import copy_v_info, e_info, get_e_info, get_v_info, v_info
-from hep_tables.transforms import expression_tuple, sequence_downlevel
+from hep_tables.graph_info import (
+    copy_v_info, e_info, get_e_info, get_v_info, v_info)
+from hep_tables.transforms import expression_transform, expression_tuple, sequence_downlevel
 from hep_tables.util_ast import add_level_to_holder, set_holder_level_index
 from hep_tables.util_graph import depth_first_traversal
 from hep_tables.utils import QueryVarTracker
@@ -140,6 +143,33 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
     g.delete_vertices(vertices_to_delete)
 
 
+def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
+    '''Look for multiple iterators coming into a single node and make sure they are reduced to a single, important, iterator,
+    by transforming the function to account for the "second" level execution.
+
+    Args:
+        g (Graph): Graph to look at
+        level (int): the node we should be looking at.
+    '''
+    for v in (a_good_v for a_good_v in g.vs() if get_v_info(a_good_v).level == level):
+        parent_edges = v.out_edges()
+        iterator_indices = set(get_e_info(e).itr_idx for e in parent_edges)
+        if len(iterator_indices) > 1:
+            iterator_indices = iterator_indices - set(get_e_info(e).itr_idx for e in parent_edges if get_e_info(e).main)
+            assert len(iterator_indices) > 0, f'Internal error - not enough unique indices: {iterator_indices}'
+            seq = get_v_info(v).sequence
+            for i in iterator_indices:
+                itr_nodes = [e.target_vertex for e in v.out_edges() if get_e_info(e).itr_idx == i]
+                parent_asts = list(chain.from_iterable([list(get_v_info(v_parent).node_as_dict) for v_parent in itr_nodes]))
+                if len(parent_asts) > 1:
+                    raise NotImplementedError(f'Cannot iterator chain when there are more than one parent of a single iterator: {parent_asts}')
+                var_name = qt.new_var_name()
+                new_expr = seq.render_ast({parent_asts[0]: ast.Name(id=var_name)})
+                seq = sequence_downlevel(expression_transform(new_expr), var_name, parent_asts[0])
+            new_v_info = copy_v_info(get_v_info(v), new_sequence=seq)
+            v['info'] = new_v_info
+
+
 def _find_edge(v1: Vertex, v2: Vertex) -> Optional[Edge]:
     '''Find the edge between v1 and v2, and return None if it does not
     exist.
@@ -159,7 +189,7 @@ def _update_edge(source_vertex: Vertex, target_vertex: Vertex, e_main: bool):
     the main vertex if hasn't been already.
 
     Args:
-        source_vertex (Vertex): The starting point of the edige
+        source_vertex (Vertex): The starting point of the edge
         target_vertex (Vertex): The destination of the edge
         e_main (bool): If true make sure that the edge metadata has main marked as true. If false,
                        then don't mark it as true (but if it is already true, then leave it)
@@ -168,10 +198,10 @@ def _update_edge(source_vertex: Vertex, target_vertex: Vertex, e_main: bool):
     old_edge = _find_edge(source_vertex, target_vertex)
     if old_edge is None:
         # Create a vertex
-        source_vertex.graph.add_edge(source_vertex, target_vertex, info=e_info(e_main))
+        # TODO: Make sure the proper iterator number is created here
+        source_vertex.graph.add_edge(source_vertex, target_vertex, info=e_info(e_main, 1))
     else:
         # See if we need ot do the update.
         if e_main:
             if not old_edge['info'].main:
-                old_edge['info'] = e_info(e_main)
-
+                old_edge['info'] = e_info(e_main, get_e_info(old_edge).itr_idx)

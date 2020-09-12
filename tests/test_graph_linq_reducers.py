@@ -4,14 +4,14 @@ from typing import Dict
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.graph_info import e_info, get_e_info, get_v_info
-from hep_tables.graph_linq_reducers import (find_highest_level, reduce_level,
+from hep_tables.graph_linq_reducers import (find_highest_level, reduce_iterator_chaining, reduce_level,
                                             reduce_tuple_vertices,
                                             run_linear_reduction)
 from hep_tables.transforms import (expression_transform, expression_tuple,
                                    sequence_downlevel)
 from hep_tables.util_ast import astIteratorPlaceholder
 
-from .conftest import mock_vinfo
+from .conftest import MatchAST, MatchASTDict, mock_vinfo, parse_ast_string
 
 
 def test_level_one_node(mocker):
@@ -37,7 +37,7 @@ def test_downlevel_one(mocker, mock_root_sequence_transform, mock_qt):
     a2_1 = ast.Constant(10)
     seq_met = mocker.MagicMock(spec=expression_transform)
     level_1_1 = g.add_vertex(info=mock_vinfo(mocker, node=a2_1, seq=seq_met, order=0, level=2))
-    g.add_edge(level_1_1, level_0, info=e_info(True))
+    g.add_edge(level_1_1, level_0, info=e_info(True, 1))
 
     reduce_level(g, 2, mock_qt)
     assert len(g.vs()) == 2
@@ -68,8 +68,8 @@ def test_main_seq_seen_on_2node_reduction(mocker, mock_qt):
     a_3 = ast.Constant(3)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, order=0, seq=mocker.MagicMock(spec=expression_transform)))
 
-    g.add_edge(level_3, level_2, info=e_info(True))
-    g.add_edge(level_3, level_1, info=e_info(False))
+    g.add_edge(level_3, level_2, info=e_info(True, 1))
+    g.add_edge(level_3, level_1, info=e_info(False, 1))
 
     reduce_level(g, 2, mock_qt)
 
@@ -88,7 +88,7 @@ def test_downlevel_to_zero(mocker, mock_root_sequence_transform, mock_qt):
     level_0 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=root_seq, level=0))
 
     level_1 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=root_seq, level=1))
-    g.add_edge(level_1, level_0, info=e_info(True))
+    g.add_edge(level_1, level_0, info=e_info(True, 1))
 
     reduce_level(g, 1, mock_qt)
     assert len(g.vs()) == 2
@@ -104,12 +104,12 @@ def test_downlevel_one_sequence(mocker, mock_root_sequence_transform, mock_qt):
     a2_1 = ast.Constant(10)
     seq_met = mocker.MagicMock(spec=expression_transform)
     level_1_1 = g.add_vertex(info=mock_vinfo(mocker, node=a2_1, seq=seq_met, order=0, level=2))
-    g.add_edge(level_1_1, level_0, info=e_info(True))
+    g.add_edge(level_1_1, level_0, info=e_info(True, 1))
 
     a3_1 = ast.Constant(10)
     seq_met_1 = mocker.MagicMock(spec=expression_transform)
     level_2_1 = g.add_vertex(info=mock_vinfo(mocker, node=a3_1, seq=seq_met_1, order=0, level=2))
-    g.add_edge(level_2_1, level_1_1, info=e_info(True))
+    g.add_edge(level_2_1, level_1_1, info=e_info(True, 1))
 
     reduce_level(g, 2, mock_qt)
     assert len(g.vs()) == 3
@@ -130,7 +130,7 @@ def test_downlevel_with_combined_node(mocker, mock_qt):
     a2 = ast.Num(n=2)
     node_1 = g.add_vertex(info=mock_vinfo(mocker, node=a2,
                                           seq=mocker.MagicMock(spec=expression_transform), order=0, level=2))
-    g.add_edge(node_1, node_0, info=e_info(True))
+    g.add_edge(node_1, node_0, info=e_info(True, 1))
 
     reduce_level(g, 2, mock_qt)
 
@@ -149,7 +149,7 @@ def test_reduce_vertices_separate_steps(mocker, mock_qt):
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, seq=mocker.MagicMock(spec=expression_transform)))
 
-    g.add_edge(level_2, level_1, info=e_info(True))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
@@ -166,11 +166,11 @@ def test_reduce_vertices_simple_dependency(mocker, mock_qt):
 
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_2, level_1, info=e_info(True))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, order=1, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_3, level_1, info=e_info(True))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
@@ -215,16 +215,16 @@ def test_reduce_tuple_downstream_edges_updated(mocker, mock_qt):
 
     a_2 = ast.Num(n=2)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_2, level_1, info=e_info(True))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     a_3 = ast.Num(n=3)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, order=1, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_3, level_1, info=e_info(True))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
 
     a_4 = ast.Num(n=4)
     level_4 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_4, order=1, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_4, level_3, info=e_info(True))
-    g.add_edge(level_4, level_2, info=e_info(True))
+    g.add_edge(level_4, level_3, info=e_info(True, 1))
+    g.add_edge(level_4, level_2, info=e_info(True, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
@@ -245,19 +245,19 @@ def test_reduce_vertices_separate_dependency(mocker, mock_qt):
 
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_2, level_1, info=e_info(True))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_3, level_1, info=e_info(True))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
 
     a_4 = ast.Constant(1)
     level_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_4, level_2, info=e_info(True))
+    g.add_edge(level_4, level_2, info=e_info(True, 1))
 
     a_5 = ast.Constant(1)
     level_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_5, level_3, info=e_info(True))
+    g.add_edge(level_5, level_3, info=e_info(True, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
@@ -272,11 +272,11 @@ def test_reduce_vertices_wrong_level(mocker, mock_qt):
 
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_2, level_1, info=e_info(True))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_3, level_1, info=e_info(True))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
 
     reduce_tuple_vertices(g, 3, mock_qt)
 
@@ -296,11 +296,11 @@ def test_tuple_2levels(mocker, mock_qt):
         a_2_2: astIteratorPlaceholder([1]),
     }
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=ast_dict, seq=mocker.MagicMock(spec=expression_transform), order=1))
-    g.add_edge(level_2, level_1, info=e_info(True))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, seq=mocker.MagicMock(spec=expression_transform), order=0))
-    g.add_edge(level_3, level_1, info=e_info(True))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
@@ -325,19 +325,19 @@ def test_reduce_vertices_sequential_reduction(mocker, mock_qt):
 
     a_2 = ast.Num(n=2)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_2, level_1, info=e_info(True))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     a_3 = ast.Num(n=3)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, order=2, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_3, level_1, info=e_info(True))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
 
     a_4 = ast.Num(n=4)
     level_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, order=3, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_4, level_2, info=e_info(True))
+    g.add_edge(level_4, level_2, info=e_info(True, 1))
 
     a_5 = ast.Num(n=5)
     level_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=4, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_5, level_3, info=e_info(True))
+    g.add_edge(level_5, level_3, info=e_info(True, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
@@ -355,26 +355,26 @@ def test_two_parents_tuple_combined(mocker, mock_qt):
 
     a_2 = ast.Constant(1)
     node_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_2, node_1, info=e_info(True))
+    g.add_edge(node_2, node_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
     node_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_3, node_1, info=e_info(True))
+    g.add_edge(node_3, node_1, info=e_info(True, 1))
 
     a_4 = ast.Constant(1)
     node_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_4, node_2, info=e_info(False))
-    g.add_edge(node_4, node_3, info=e_info(True))
+    g.add_edge(node_4, node_2, info=e_info(False, 1))
+    g.add_edge(node_4, node_3, info=e_info(True, 1))
 
     a_5 = ast.Constant(1)
     node_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_5, node_2, info=e_info(False))
-    g.add_edge(node_5, node_3, info=e_info(True))
+    g.add_edge(node_5, node_2, info=e_info(False, 1))
+    g.add_edge(node_5, node_3, info=e_info(True, 1))
 
     a_6 = ast.Constant(6)
     node_6 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_6, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_6, node_4, info=e_info(True))
-    g.add_edge(node_6, node_5, info=e_info(False))
+    g.add_edge(node_6, node_4, info=e_info(True, 1))
+    g.add_edge(node_6, node_5, info=e_info(False, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
@@ -418,26 +418,26 @@ def test_two_parents_tuple_combined_reorder(mocker, mock_qt):
 
     a_2 = ast.Constant(1)
     node_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_2, node_1, info=e_info(True))
+    g.add_edge(node_2, node_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
     node_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_3, node_1, info=e_info(True))
+    g.add_edge(node_3, node_1, info=e_info(True, 1))
 
     a_4 = ast.Constant(1)
     node_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_4, node_2, info=e_info(True))
-    g.add_edge(node_4, node_3, info=e_info(False))
+    g.add_edge(node_4, node_2, info=e_info(True, 1))
+    g.add_edge(node_4, node_3, info=e_info(False, 1))
 
     a_5 = ast.Constant(1)
     node_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_5, node_2, info=e_info(True))
-    g.add_edge(node_5, node_3, info=e_info(False))
+    g.add_edge(node_5, node_2, info=e_info(True, 1))
+    g.add_edge(node_5, node_3, info=e_info(False, 1))
 
     a_6 = ast.Constant(6)
     node_6 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_6, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(node_6, node_4, info=e_info(True))
-    g.add_edge(node_6, node_5, info=e_info(False))
+    g.add_edge(node_6, node_4, info=e_info(True, 1))
+    g.add_edge(node_6, node_5, info=e_info(False, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 
@@ -486,7 +486,7 @@ def test_single_to_zero(mocker, mock_qt):
     seq_met = mocker.MagicMock(spec=expression_transform)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, node=a2, seq=seq_met, order=0, level=2))
 
-    g.add_edge(level_2, level_0, info=e_info(True))
+    g.add_edge(level_2, level_0, info=e_info(True, 1))
 
     run_linear_reduction(g, mock_qt)
 
@@ -502,11 +502,11 @@ def test_double_nodes_reduced_to_zero(mocker, mock_qt):
 
     a_2 = ast.Constant(1)
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_2, level_1, info=e_info(True))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
     level_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=2, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_3, level_1, info=e_info(True))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
 
     run_linear_reduction(g, mock_qt)
 
@@ -520,3 +520,65 @@ def test_double_nodes_reduced_to_zero(mocker, mock_qt):
     assert isinstance(seq1, sequence_downlevel)
     seq_tuple = seq1.transform
     assert isinstance(seq_tuple, expression_tuple)
+
+
+def test_two_iterators_replacement(mocker, mock_qt):
+    'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
+    g = Graph(directed=True)
+
+    # Now, the two nodes that have different iterator sequences
+    a2 = ast.Num(n=2)
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a3 = ast.Num(n=3)
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a3, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    # Next, the node that uses both of them.
+    a4 = ast.Num(n=4)
+    seq4 = mocker.MagicMock(spec=expression_transform)
+    ast_name_dict: Dict[str, ast.AST] = {"a2": a2, "a3": a3}
+    seq4.render_ast.return_value = parse_ast_string("a2 + e1000", ast_name_dict)
+    node4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a4, order=1, seq=seq4))
+    g.add_edge(node4, node2, info=e_info(True, 1))
+    g.add_edge(node4, node3, info=e_info(False, 2))
+
+    # Now do the iterator reduction. It should hit this node.
+    reduce_iterator_chaining(g, level=2, qt=mock_qt)
+
+    # Basics of the node topology should not have changed
+    assert len(g.vs()) == 3
+    assert len(g.es()) == 2
+
+    assert node2 in node4.neighbors(mode='out')
+    assert node3 in node4.neighbors(mode='out')
+
+    # However, the sequence should have changed into some thing that is a second derivation.
+    new_seq4 = get_v_info(node4).sequence
+    assert MatchAST("Select(a3, lambda e1000: a2 + e1000)", ast_name_dict) == new_seq4.render_ast({})
+    seq4.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000')}))
+
+
+def test_two_iterators_same_iterator(mocker, mock_qt):
+    'If we do not have two different iterators, then it should do nothing'
+    'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
+    g = Graph(directed=True)
+
+    # Now, the two nodes that have different iterator sequences
+    a2 = ast.Num(n=2)
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a3 = ast.Num(n=3)
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a3, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    # Next, the node that uses both of them.
+    a4 = ast.Num(n=4)
+    seq4 = mocker.MagicMock(spec=expression_transform)
+    node4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a4, order=1, seq=seq4))
+    g.add_edge(node4, node2, info=e_info(True, 1))
+    g.add_edge(node4, node3, info=e_info(False, 1))
+
+    # Now do the iterator reduction. It should hit this node.
+    reduce_iterator_chaining(g, level=2, qt=mock_qt)
+
+    # However, the sequence should have changed into some thing that is a second derivation.
+    assert get_v_info(node4).sequence is seq4

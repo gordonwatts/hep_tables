@@ -111,21 +111,35 @@ def mock_root_sequence_transform(mocker):
     return mine, a, root_seq
 
 
-def parse_ast_string(s: str) -> ast.AST:
+def parse_ast_string(s: str, name_replacements: Dict[str, ast.AST] = {}) -> ast.AST:
+    '''Parse a string as an AST and return it.
+
+    We can replace anything that parses as an ast.Name with whatever is in the dict. Also, if the name
+    'astIteratorPlaceholder' is found, it will be replaced with an instance of that object.
+
+    Args:
+        s (str): AST to be parsed
+        name_replacements (Dict[str, ast.AST]): Extra name substitions to do.
+
+    Returns:
+        ast.AST: The parsed AST expression
+    '''
     class replace_it(ast.NodeTransformer):
         def visit_Name(self, node: ast.Name) -> ast.AST:
             if node.id == 'astIteratorPlaceholder':
                 return astIteratorPlaceholder()
+            elif node.id in name_replacements:
+                return name_replacements[node.id]
             else:
                 return node
     return replace_it().visit(ast.parse(s).body[0].value)  # type:ignore
 
 
 class MatchAST:
-    def __init__(self, true_ast: Union[str, ast.AST]):
+    def __init__(self, true_ast: Union[str, ast.AST], name_replace_dict: Dict[str, ast.AST] = {}):
         '''Match object for an ast'''
         if isinstance(true_ast, str):
-            self._true_ast = parse_ast_string(true_ast)
+            self._true_ast = parse_ast_string(true_ast, name_replace_dict)
         else:
             self._true_ast = true_ast
 

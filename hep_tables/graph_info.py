@@ -82,8 +82,9 @@ class v_info:
 class e_info:
     '''Metadata attached with a vertex Edge.
     '''
-    def __init__(self, main_seq: bool):
+    def __init__(self, main_seq: bool, iterator_index: int):
         self._main = main_seq
+        self._iterators = iterator_index
 
     @property
     def main(self) -> bool:
@@ -93,6 +94,15 @@ class e_info:
             bool: True if this edge represents the main sequence.
         '''
         return self._main
+
+    @property
+    def itr_idx(self) -> int:
+        '''Return the iterator index this edge is using
+
+        Returns:
+            int: The iterator index
+        '''
+        return self._iterators
 
 
 class g_info:
