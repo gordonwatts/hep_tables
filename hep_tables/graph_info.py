@@ -82,9 +82,10 @@ class v_info:
 class e_info:
     '''Metadata attached with a vertex Edge.
     '''
-    def __init__(self, main_seq: bool, iterator_index: int):
+    def __init__(self, main_seq: bool, iterator_index: int, depth_mark: bool = False):
         self._main = main_seq
         self._iterators = iterator_index
+        self._depth_mark = depth_mark
 
     @property
     def main(self) -> bool:
@@ -103,6 +104,14 @@ class e_info:
             int: The iterator index
         '''
         return self._iterators
+
+    @property
+    def depth_mark(self) -> bool:
+        return self._depth_mark
+
+    @depth_mark.setter
+    def depth_mark(self, v: bool):
+        self._depth_mark = v
 
 
 class g_info:

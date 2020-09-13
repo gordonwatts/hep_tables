@@ -153,7 +153,7 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
     '''
     for v in (a_good_v for a_good_v in g.vs() if get_v_info(a_good_v).level == level):
         parent_edges = v.out_edges()
-        iterator_indices = set(get_e_info(e).itr_idx for e in parent_edges)
+        iterator_indices = set(get_e_info(e).itr_idx for e in parent_edges if not get_e_info(e).depth_mark)
         if len(iterator_indices) > 1:
             iterator_indices = iterator_indices - set(get_e_info(e).itr_idx for e in parent_edges if get_e_info(e).main)
             assert len(iterator_indices) > 0, f'Internal error - not enough unique indices: {iterator_indices}'
@@ -166,8 +166,13 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
                 var_name = qt.new_var_name()
                 new_expr = seq.render_ast({parent_asts[0]: ast.Name(id=var_name)})
                 seq = sequence_downlevel(expression_transform(new_expr), var_name, parent_asts[0])
+            # Update vertex and edges
             new_v_info = copy_v_info(get_v_info(v), new_sequence=seq)
             v['info'] = new_v_info
+            for e in v.out_edges():
+                info = get_e_info(e)
+                if info.itr_idx in iterator_indices:
+                    info.depth_mark = True
 
 
 def _find_edge(v1: Vertex, v2: Vertex) -> Optional[Edge]:

@@ -552,10 +552,48 @@ def test_two_iterators_replacement(mocker, mock_qt):
     assert node2 in node4.neighbors(mode='out')
     assert node3 in node4.neighbors(mode='out')
 
+    assert not all(get_e_info(e).depth_mark for e in g.es())
+    assert any(get_e_info(e).depth_mark for e in g.es())
+
     # However, the sequence should have changed into some thing that is a second derivation.
     new_seq4 = get_v_info(node4).sequence
     assert MatchAST("Select(a3, lambda e1000: a2 + e1000)", ast_name_dict) == new_seq4.render_ast({})
     seq4.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000')}))
+
+
+def test_two_iterators_no_repeat(mocker, mock_qt):
+    'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
+    g = Graph(directed=True)
+
+    # Now, the two nodes that have different iterator sequences
+    a2 = ast.Num(n=2)
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a3 = ast.Num(n=3)
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a3, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    # Next, the node that uses both of them.
+    a4 = ast.Num(n=4)
+    seq4 = mocker.MagicMock(spec=expression_transform)
+    ast_name_dict: Dict[str, ast.AST] = {"a2": a2, "a3": a3}
+    seq4.render_ast.return_value = parse_ast_string("a2 + e1000", ast_name_dict)
+    node4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a4, order=1, seq=seq4))
+    g.add_edge(node4, node2, info=e_info(True, 1, depth_mark=False))
+    g.add_edge(node4, node3, info=e_info(False, 2, depth_mark=True))
+
+    # Now do the iterator reduction. It should hit this node.
+    reduce_iterator_chaining(g, level=2, qt=mock_qt)
+
+    # Basics of the node topology should not have changed
+    assert len(g.vs()) == 3
+    assert len(g.es()) == 2
+
+    assert node2 in node4.neighbors(mode='out')
+    assert node3 in node4.neighbors(mode='out')
+
+    # Since the edges were marked as already having taken care of this, the sequence should not have been altered.
+    new_seq4 = get_v_info(node4).sequence
+    assert new_seq4 is seq4
 
 
 def test_two_iterators_same_iterator(mocker, mock_qt):
