@@ -6,7 +6,7 @@ from dataframe_expressions.render_dataframe import render_callable, render_conte
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
-from hep_tables.graph_info import e_info, get_g_info, get_v_info, v_info
+from hep_tables.graph_info import e_info, get_e_info, get_g_info, get_v_info, v_info
 from hep_tables.hep_table import xaod_table
 from hep_tables.transforms import expression_transform, root_sequence_transform
 from hep_tables.type_info import type_inspector
@@ -95,12 +95,16 @@ class _translate_to_sequence(ast.NodeVisitor):
         for i in range(depth):
             seq_out_type = Iterable[seq_out_type]  # type: ignore
 
+        # Iterator tracking: understand if this iterator is the same as the last one or we are using
+        # a new one because we are down a level.
+        itr_index = _parent_iterator_index(v_source) if depth == vs_meta.level else get_g_info(self._g).next_iter_index()
+
         # Code this up as a call, propagating the sequence return type.
         function_call = ast.Call(func=ast.Attribute(value=node.value, attr=node.attr), args=[], keywords=[])
         t = expression_transform(function_call)
 
         v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, node))
-        self._g.add_edge(v, v_source, info=e_info(True))
+        self._g.add_edge(v, v_source, info=e_info(True, itr_index))
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         '''Process a python binary operator. We support:
@@ -134,6 +138,7 @@ class _translate_to_sequence(ast.NodeVisitor):
             raise FuncADLTablesException(f'Unable to figure out how to {left_meta.v_type} {node.op} {right_meta.v_type}.')
 
         level, (l_type, r_type) = func_info
+        assert level == left_meta.level or level == right_meta.level, 'TODO: implied loops in binary ops not yet tested'
 
         # Figure out the return type given the types of these two
         if (l_type == float) or (r_type == float):
@@ -150,10 +155,14 @@ class _translate_to_sequence(ast.NodeVisitor):
         l_func_body = ast.BinOp(left=node.left, op=node.op, right=node.right)
         s = expression_transform(l_func_body)
 
+        # Figure out if we are using the same index or not
+        left_index = _parent_iterator_index(left)
+        right_index = _parent_iterator_index(right)
+
         # Create the vertex and connect to a and b via edges
         op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, node))
-        self._g.add_edge(op_vertex, left, info=e_info(True))
-        self._g.add_edge(op_vertex, right, info=e_info(False))
+        self._g.add_edge(op_vertex, left, info=e_info(True, left_index))
+        self._g.add_edge(op_vertex, right, info=e_info(False, right_index))
 
     def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:
         '''Visit a root of the tree. This will form the basis of all of the graph.
@@ -294,7 +303,8 @@ class _translate_to_sequence(ast.NodeVisitor):
 
         main_seq = True
         for v in arg_vtx:
-            self._g.add_edge(new_v, v, info=e_info(main_seq))
+            assert get_v_info(v).level == level, 'TODO: Make sure this test case is covered for edge index'
+            self._g.add_edge(new_v, v, info=e_info(main_seq, _parent_iterator_index(v)))
             main_seq = False
 
 
@@ -304,3 +314,20 @@ def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:
     v_list = list(g.vs.select(lambda v: get_v_info(v).node is node))
     assert len(v_list) == 1, f'Internal error: Should be only one node per vertex - found {len(v_list)}'
     return v_list[0]
+
+
+def _parent_iterator_index(v_source: Vertex) -> int:
+    '''Given a vertex, find its main sequence in, and figure out the iterator number for it.
+
+    Args:
+        v_source (Vertex): The vertex which we will look at its input for.
+
+    Returns:
+        int: The index that was used.
+    '''
+    edges = v_source.out_edges()
+    for e in edges:
+        i = get_e_info(e)
+        if i.main:
+            return i.itr_idx
+    assert False, 'Internal programing error - should always have a main sequence'

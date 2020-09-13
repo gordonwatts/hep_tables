@@ -117,7 +117,7 @@ class e_info:
 class g_info:
     '''Metadata associated with the Graph object
     '''
-    def __init__(self, global_types: List[Type]):
+    def __init__(self, global_types: List[Type], iter_index: int = 0):
         '''Initialize the global graph metadata.
 
         Args:
@@ -125,6 +125,7 @@ class g_info:
             scanned for functions, for example, that can be called at the global level.
         '''
         self._global_types = global_types
+        self._iter_index = iter_index
 
     @property
     def global_types(self) -> List[Type]:
@@ -134,6 +135,15 @@ class g_info:
             List[Type]: List of types known at the global level
         '''
         return self._global_types
+
+    def next_iter_index(self) -> int:
+        '''Return the next iterator index availbile.
+
+        Returns:
+            int: Next free iterator index
+        '''
+        self._iter_index += 1
+        return self._iter_index
 
 
 def get_v_info(v: Vertex) -> v_info:

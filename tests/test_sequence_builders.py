@@ -10,7 +10,7 @@ from igraph import Graph
 
 from hep_tables import xaod_table
 from hep_tables.exceptions import FuncADLTablesException
-from hep_tables.graph_info import g_info, get_e_info, get_v_info, v_info
+from hep_tables.graph_info import e_info, g_info, get_e_info, get_v_info, v_info
 from hep_tables.sequence_builders import ast_to_graph
 from hep_tables.transforms import (expression_transform,
                                    root_sequence_transform,
@@ -121,18 +121,21 @@ def test_attribute_known_list(mocker):
     t_mock.iterable_object.return_value = TestEvent
 
     g = Graph(directed=True)
+    a_origin = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], ast.Name(id='dude')))
     a_vtx = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[TestEvent], a))
+    g.add_edge(a_vtx, a_origin, info=e_info(True, 1))
 
     ast_to_graph(pt, g, t_mock)
 
     vertexes = g.vs()
-    assert len(vertexes) == 2
+    assert len(vertexes) == 3
 
     edges = a_vtx.in_edges()
     assert len(edges) == 1
 
     e1 = edges[0]
     assert get_e_info(e1).main is True
+    assert get_e_info(e1).itr_idx == 1
     assert e1.target_vertex == a_vtx
 
     t_mock.attribute_type.assert_called_once()
@@ -227,6 +230,7 @@ def test_attribute_implied_loop(mocker):
     t_mock.iterable_object.side_effect = iterator_unroll
 
     g = Graph(directed=True)
+    g['info'] = g_info([], iter_index=1)
     a_vtx = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[Jets]], a))
 
     ast_to_graph(pt, g, t_mock)
@@ -239,6 +243,7 @@ def test_attribute_implied_loop(mocker):
 
     e1 = edges[0]
     assert get_e_info(e1).main is True
+    assert get_e_info(e1).itr_idx == 2
     assert e1.target_vertex == a_vtx
 
     attr_vtx = get_v_info(e1.source_vertex)
@@ -285,15 +290,18 @@ def test_binary_op(operator, sym, mocker):
     op = ast.BinOp(left=a, right=b, op=operator())
 
     g = Graph(directed=True)
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    n2 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
+    g.add_edge(n1, r, info=e_info(True, 1))
+    g.add_edge(n2, r, info=e_info(True, 1))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
 
     ast_to_graph(op, g, t_mock)
 
-    assert len(g.vs()) == 3
+    assert len(g.vs()) == 4
     op_v = get_v_info(list(g.vs())[-1])
 
     assert op_v.v_type == Iterable[float]
@@ -305,6 +313,45 @@ def test_binary_op(operator, sym, mocker):
     assert MatchAST(f"e1000 {sym} e2000") \
         == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
 
+    edges = list(g.vs())[-1].out_edges()
+    assert all(get_e_info(e).itr_idx == 1 for e in edges)
+
+
+def test_binary_op_cross(mocker):
+    'Test the binary operators'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=ast.Add())
+
+    g = Graph(directed=True)
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    n2 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
+    g.add_edge(n1, r, info=e_info(True, 1))
+    g.add_edge(n2, r, info=e_info(True, 2))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 4
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[float]
+    assert op_v.node is op
+    assert op_v.level == 1
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("e1000 + e2000") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
+
+    edges = list(g.vs())[-1].out_edges()
+    assert len(edges) == 2
+    assert any(get_e_info(e).itr_idx == 1 for e in edges)
+    assert any(get_e_info(e).itr_idx == 2 for e in edges)
+
 
 def test_binary_two_levels_down(mocker):
     'Test binary operator: Iterable[Iterable[float]] + Iterable[Iterable[float]]'
@@ -312,16 +359,21 @@ def test_binary_two_levels_down(mocker):
     b = ast.Name('b')
     op = ast.BinOp(left=a, right=b, op=ast.Add())
 
+    # Build the pre-existing graph. If these are from df.jets.pt, then they will already be at level 2, which 
+    # is where we will need to be operating too - so no change in operator.
     g = Graph(directed=True)
-    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], a))
-    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], b))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], a))
+    n2 = g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], b))
+    g.add_edge(n1, r, info=e_info(True, 1))
+    g.add_edge(n2, r, info=e_info(True, 1))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.find_broadcast_level_for_args.return_value = (2, (float, float))
 
     ast_to_graph(op, g, t_mock)
 
-    assert len(g.vs()) == 3
+    assert len(g.vs()) == 4
     op_v = get_v_info(list(g.vs())[-1])
 
     assert op_v.v_type == Iterable[Iterable[float]]
@@ -334,9 +386,6 @@ def test_binary_two_levels_down(mocker):
         == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
     t_mock.find_broadcast_level_for_args.assert_called_with((Union[float, int], Union[float, int]),
                                                             (Iterable[Iterable[float]], Iterable[Iterable[float]]))
-
-
-# TODO: Test that binary two levels down from different sources (tracks.pt + jets.pt) fails. (make sure not already tested)
 
 
 def test_binary_bad_type(mocker):
@@ -388,8 +437,11 @@ def test_binary_types(t_left, operator, t_right, t_result, mocker):
     op = ast.BinOp(left=a, right=b, op=operator())
 
     g = Graph(directed=True)
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[t_left], a))
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[t_right], b))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[t_left], a))
+    n2 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[t_right], b))
+    g.add_edge(n1, r, info=e_info(True, 1))
+    g.add_edge(n2, r, info=e_info(True, 1))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.find_broadcast_level_for_args.return_value = (1, (t_left, t_right))
@@ -402,12 +454,15 @@ def test_binary_types(t_left, operator, t_right, t_result, mocker):
 
 
 def test_function_single_arg(mocker):
+    'Call a function with a single argument, which is the main sequence'
     a = ast.Name('a')
     c = ast.Call(func=ast.Name(id='my_func'), args=[a], keywords=[])
 
     g = Graph(directed=True)
     g['info'] = g_info([])
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    g.add_edge(n1, r, info=e_info(True, 1))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
@@ -416,7 +471,7 @@ def test_function_single_arg(mocker):
 
     ast_to_graph(c, g, t_mock)
 
-    assert len(g.vs()) == 2
+    assert len(g.vs()) == 3
     call_v = get_v_info(list(g.vs())[-1])
 
     assert call_v.v_type == Iterable[float]
@@ -438,8 +493,11 @@ def test_function_two_arg(mocker):
 
     g = Graph(directed=True)
     g['info'] = g_info([])
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    n2 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], b))
+    g.add_edge(n1, r, info=e_info(True, 1))
+    g.add_edge(n2, r, info=e_info(True, 1))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float, float], float]
@@ -448,7 +506,7 @@ def test_function_two_arg(mocker):
 
     ast_to_graph(c, g, t_mock)
 
-    assert len(g.vs()) == 3
+    assert len(g.vs()) == 4
     call_v = get_v_info(list(g.vs())[-1])
 
     assert call_v.v_type == Iterable[float]
@@ -467,7 +525,9 @@ def test_function_single_arg_level2(mocker):
 
     g = Graph(directed=True)
     g['info'] = g_info([])
-    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 =g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    g.add_edge(n1, r, info=e_info(True, 1))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
@@ -476,7 +536,7 @@ def test_function_single_arg_level2(mocker):
 
     ast_to_graph(c, g, t_mock)
 
-    assert len(g.vs()) == 2
+    assert len(g.vs()) == 3
 
 
 def test_function_unknown(mocker):
@@ -543,7 +603,9 @@ def test_function_placeholder(mocker):
     c = ast.Call(func=ast_FunctionPlaceholder(func1), args=[a], keywords=[])
 
     g = Graph(directed=True)
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a))
+    g.add_edge(n1, r, info=e_info(True, 1))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.callable_signature.return_value = Callable[[float], float]
@@ -553,7 +615,7 @@ def test_function_placeholder(mocker):
 
     ast_to_graph(c, g, t_mock)
 
-    assert len(g.vs()) == 2
+    assert len(g.vs()) == 3
     call_v = get_v_info(list(g.vs())[-1])
 
     assert call_v.v_type == Iterable[float]
@@ -598,7 +660,9 @@ def test_map(mocker):
     c = ast.Call(func=ast.Attribute(attr='map', value=a), args=[callable])
 
     g = Graph(directed=True)
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Jets], a))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Jets], a))
+    g.add_edge(n1, r, info=e_info(True, 1))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.attribute_type.return_value = Callable[[], float]
@@ -611,8 +675,9 @@ def test_map(mocker):
 
     ast_to_graph(c, g, t_mock, context=context)
 
-    assert len(g.vs()) == 2
-    call_v = get_v_info(list(g.vs())[-1])
+    assert len(g.vs()) == 3
+    call = list(g.vs())[-1]
+    call_v = get_v_info(call)
 
     assert call_v.v_type == Iterable[float]
     # Note - the "node" this refers to is not something we can point to out here.
@@ -624,9 +689,9 @@ def test_map(mocker):
     assert MatchAST("e1000.pt()") \
         == seq.render_ast({a: ast.Name(id='e1000')})
 
-
-# TODO: When we get the j.pt in test_double_map return with argument of [float, float] -> [float] but supply
-# no args - it says "implied called to pt..." - but doesn't tell us if it is the Jet pt or the Track pT. It should.
+    edges = call.out_edges()
+    assert len(edges) == 1
+    assert get_e_info(edges[0]).itr_idx == 1
 
 
 def test_double_map(mocker):
@@ -645,8 +710,11 @@ def test_double_map(mocker):
     c = ast.Call(func=ast.Attribute(attr='map', value=a), args=[callable])
 
     g = Graph(directed=True)
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Jets], a))
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Tracks], b))
+    r = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name('b')))
+    n1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Jets], a))
+    n2 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Tracks], b))
+    g.add_edge(n1, r, info=e_info(True, 1))
+    g.add_edge(n2, r, info=e_info(True, 2))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[], float]
@@ -662,7 +730,8 @@ def test_double_map(mocker):
 
     ast_to_graph(c, g, t_mock, context=context)
 
-    assert len(g.vs()) == 5
+    assert len(g.vs()) == 6
+    # 1 is the root
     # 2 are the ones we added
     # one each to calc the pt (2)
     # one to do the sum
@@ -678,6 +747,12 @@ def test_double_map(mocker):
 
     assert get_v_info(left_v).v_type == Iterable[float]
     assert get_v_info(right_v).v_type == Iterable[float]
+
+    edges = add_v.out_edges()
+    assert len(edges) == 2
+    assert any(get_e_info(e).itr_idx == 1 for e in edges)
+    assert any(get_e_info(e).itr_idx == 2 for e in edges)
+
 
 # df.jets.map(lambda j: df.tracks.map(lambda t: dr(j.pt, t.pt)))
 # df.jets.map(lambda j1: jf.jets.map(lambda j2: dr(j1.pt, j2.pt)))
