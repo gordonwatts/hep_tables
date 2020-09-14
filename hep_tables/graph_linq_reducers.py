@@ -22,6 +22,7 @@ def run_linear_reduction(g: Graph, qv: QueryVarTracker):
     '''
     max_level = find_highest_level(g)
     for level in range(max_level, 0, -1):
+        reduce_iterator_chaining(g, level, qv)
         reduce_tuple_vertices(g, level, qv)
 
         if level != 0:

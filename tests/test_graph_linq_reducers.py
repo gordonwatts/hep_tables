@@ -3,7 +3,7 @@ from typing import Dict
 
 from igraph import Graph, Vertex  # type: ignore
 
-from hep_tables.graph_info import e_info, get_e_info, get_v_info
+from hep_tables.graph_info import e_info, g_info, get_e_info, get_v_info
 from hep_tables.graph_linq_reducers import (find_highest_level, reduce_iterator_chaining, reduce_level,
                                             reduce_tuple_vertices,
                                             run_linear_reduction)
@@ -474,54 +474,6 @@ def test_two_parents_tuple_combined_reorder(mocker, mock_qt):
     assert get_e_info(edges[0]).main
 
 
-def test_single_to_zero(mocker, mock_qt):
-    'Knock a level 2 all the way down to level 0'
-    g = Graph(directed=True)
-
-    a1 = ast.Constant(10)
-    seq_junk = mocker.MagicMock(spec=expression_transform)
-    level_0 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=seq_junk, order=0, level=0))
-
-    a2 = ast.Constant(10)
-    seq_met = mocker.MagicMock(spec=expression_transform)
-    level_2 = g.add_vertex(info=mock_vinfo(mocker, node=a2, seq=seq_met, order=0, level=2))
-
-    g.add_edge(level_2, level_0, info=e_info(True, 1))
-
-    run_linear_reduction(g, mock_qt)
-
-    assert len(g.vs()) == 2
-    assert get_v_info(level_2).level == 0
-
-
-def test_double_nodes_reduced_to_zero(mocker, mock_qt):
-    '2 nodes, dependent on same prior node, combined and reduced in right order'
-    g = Graph(directed=True)
-    a_1 = ast.Constant(1)
-    level_1 = g.add_vertex(info=mock_vinfo(mocker, level=0, node=a_1, order=0, seq=mocker.MagicMock(spec=expression_transform)))
-
-    a_2 = ast.Constant(1)
-    level_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_2, level_1, info=e_info(True, 1))
-
-    a_3 = ast.Constant(1)
-    level_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=2, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_3, level_1, info=e_info(True, 1))
-
-    run_linear_reduction(g, mock_qt)
-
-    assert len(g.vs()) == 2
-    v0, v1 = list(g.vs())
-    assert get_v_info(v0).level == 0
-    assert isinstance(get_v_info(v0).sequence, expression_transform)
-
-    assert get_v_info(v1).level == 0
-    seq1 = get_v_info(v1).sequence
-    assert isinstance(seq1, sequence_downlevel)
-    seq_tuple = seq1.transform
-    assert isinstance(seq_tuple, expression_tuple)
-
-
 def test_two_iterators_replacement(mocker, mock_qt):
     'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
     g = Graph(directed=True)
@@ -620,3 +572,90 @@ def test_two_iterators_same_iterator(mocker, mock_qt):
 
     # However, the sequence should have changed into some thing that is a second derivation.
     assert get_v_info(node4).sequence is seq4
+
+
+
+
+def test_single_to_zero(mocker, mock_qt):
+    'Knock a level 2 all the way down to level 0'
+    g = Graph(directed=True)
+
+    a1 = ast.Constant(10)
+    seq_junk = mocker.MagicMock(spec=expression_transform)
+    level_0 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=seq_junk, order=0, level=0))
+
+    a2 = ast.Constant(10)
+    seq_met = mocker.MagicMock(spec=expression_transform)
+    level_2 = g.add_vertex(info=mock_vinfo(mocker, node=a2, seq=seq_met, order=0, level=2))
+
+    g.add_edge(level_2, level_0, info=e_info(True, 1))
+
+    run_linear_reduction(g, mock_qt)
+
+    assert len(g.vs()) == 2
+    assert get_v_info(level_2).level == 0
+
+
+def test_double_nodes_reduced_to_zero(mocker, mock_qt):
+    '2 nodes, dependent on same prior node, combined and reduced in right order'
+    g = Graph(directed=True)
+    a_1 = ast.Constant(1)
+    level_1 = g.add_vertex(info=mock_vinfo(mocker, level=0, node=a_1, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a_2 = ast.Constant(1)
+    level_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
+
+    a_3 = ast.Constant(1)
+    level_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=2, seq=mocker.MagicMock(spec=expression_transform)))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
+
+    run_linear_reduction(g, mock_qt)
+
+    assert len(g.vs()) == 2
+    v0, v1 = list(g.vs())
+    assert get_v_info(v0).level == 0
+    assert isinstance(get_v_info(v0).sequence, expression_transform)
+
+    assert get_v_info(v1).level == 0
+    seq1 = get_v_info(v1).sequence
+    assert isinstance(seq1, sequence_downlevel)
+    seq_tuple = seq1.transform
+    assert isinstance(seq_tuple, expression_tuple)
+
+
+def test_two_iterators_combined(mocker, mock_root_sequence_transform, mock_qt):
+    'Make sure the common iterator code is called properly'
+
+    g = Graph(directed=True)
+    g['info'] = g_info([], iter_index=5)
+
+    mine, a1, root_seq = mock_root_sequence_transform
+    r = g.add_vertex(info=mock_vinfo(mocker, level=0, seq=root_seq, node=a1))
+
+    n1 = g.add_vertex(info=mock_vinfo(mocker, level=1, seq=mocker.MagicMock(spec=expression_transform), node=ast.Name('a')))
+    n2 = g.add_vertex(info=mock_vinfo(mocker, level=1, seq=mocker.MagicMock(spec=expression_transform), node=ast.Name('b')))
+    g.add_edge(n1, r, info=e_info(True, 1))
+    g.add_edge(n2, r, info=e_info(True, 2))
+
+    a_adder = ast.Name('adder')
+    n3 = g.add_vertex(info=mock_vinfo(mocker, level=1, seq=mocker.MagicMock(spec=expression_transform), node=a_adder))
+    g.add_edge(n3, n1, info=e_info(True, 1))
+    g.add_edge(n3, n2, info=e_info(False, 2))
+
+    run_linear_reduction(g, mock_qt)
+
+    # Dig out the expression that should have been combined.
+    assert len(g.vs()) == 3
+    v_list = [i_v for i_v in g.vs() if a_adder in get_v_info(i_v).node_as_dict]
+    assert len(v_list) == 1
+    v = v_list[0]
+    seq = get_v_info(v).sequence
+
+    # Two things going on - first, it should be at level 0, and so it should be wrapped once.
+    assert get_v_info(v).level == 0
+    assert isinstance(seq, sequence_downlevel)
+
+    # Now - since we are coming from two different iterators, it should have another inside it - this is the chaining sequence.
+    seq_chained = seq.transform
+    assert isinstance(seq_chained, sequence_downlevel)

@@ -1,10 +1,10 @@
 import ast
 from tests.conftest import MatchASTDict
-from typing import Any
+from typing import Any, Iterable
 
 from igraph import Graph
 
-from hep_tables.graph_info import e_info, v_info
+from hep_tables.graph_info import e_info, g_info, v_info
 from hep_tables.linq_builder import build_linq_expression
 from hep_tables.transforms import sequence_predicate_base
 from hep_tables.util_ast import astIteratorPlaceholder
@@ -35,7 +35,7 @@ def test_source_and_single_generator(mocker, mock_root_sequence_transform):
     seq_met.sequence.return_value = proper_return
     level_1 = g.add_vertex(info=v_info(1, seq_met, Any, a2))
 
-    g.add_edge(level_1, level_0, info=e_info(True))
+    g.add_edge(level_1, level_0, info=e_info(True, 1))
 
     r = build_linq_expression(g)
 
@@ -55,7 +55,7 @@ def test_level_appropriate(mocker, mock_root_sequence_transform):
     seq_met.sequence.return_value = proper_return
     level_1 = g.add_vertex(info=v_info(1, seq_met, Any, a2))
 
-    g.add_edge(level_1, level_0, info=e_info(True))
+    g.add_edge(level_1, level_0, info=e_info(True, 1))
 
     build_linq_expression(g)
 
