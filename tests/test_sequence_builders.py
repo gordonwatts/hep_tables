@@ -10,7 +10,7 @@ from igraph import Graph
 
 from hep_tables import xaod_table
 from hep_tables.exceptions import FuncADLTablesException
-from hep_tables.graph_info import e_info, g_info, get_e_info, get_v_info, v_info
+from hep_tables.graph_info import e_info, g_info, get_e_info, get_g_info, get_v_info, v_info
 from hep_tables.sequence_builders import ast_to_graph
 from hep_tables.transforms import (expression_transform,
                                    root_sequence_transform,
@@ -39,6 +39,11 @@ class TestEvent:
 
     def Jets(self) -> Iterable[Jets]:
         ...
+
+
+def test_ast_blank(mocker):
+    g = ast_to_graph(ast.Num(n=10))
+    assert get_g_info(g) is not None
 
 
 def test_xaod_table_type(mocker):

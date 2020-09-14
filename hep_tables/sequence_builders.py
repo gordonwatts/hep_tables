@@ -6,7 +6,7 @@ from dataframe_expressions.render_dataframe import render_callable, render_conte
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
-from hep_tables.graph_info import e_info, get_e_info, get_g_info, get_v_info, v_info
+from hep_tables.graph_info import e_info, g_info, get_e_info, get_g_info, get_v_info, v_info
 from hep_tables.hep_table import xaod_table
 from hep_tables.transforms import expression_transform, root_sequence_transform
 from hep_tables.type_info import type_inspector
@@ -28,7 +28,12 @@ def ast_to_graph(a: ast.AST,
     Returns:
         Graph: Returned computational graph
     '''
-    g_out = g_in if g_in is not None else Graph(directed=True)
+    def create_graph():
+        g = Graph(directed=True)
+        g['info'] = g_info([])
+        return g
+
+    g_out = g_in if g_in is not None else create_graph()
     context = context if context is not None else render_context()
     type_system = type_system if type_system is not None else type_inspector()
     _translate_to_sequence(g_out, type_system, context).visit(a)
