@@ -162,8 +162,7 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
             for i in iterator_indices:
                 itr_nodes = [e.target_vertex for e in v.out_edges() if get_e_info(e).itr_idx == i]
                 parent_asts = list(chain.from_iterable([list(get_v_info(v_parent).node_as_dict) for v_parent in itr_nodes]))
-                if len(parent_asts) > 1:
-                    raise NotImplementedError(f'Cannot iterator chain when there are more than one parent of a single iterator: {parent_asts}')
+                # Assume all parents of a single iterator have the same path back to that iterator.
                 var_name = qt.new_var_name()
                 new_expr = seq.render_ast({parent_asts[0]: ast.Name(id=var_name)})
                 seq = sequence_downlevel(expression_transform(new_expr), var_name, parent_asts[0])

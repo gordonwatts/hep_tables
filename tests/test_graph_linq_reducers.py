@@ -550,7 +550,6 @@ def test_two_iterators_no_repeat(mocker, mock_qt):
 
 def test_two_iterators_same_iterator(mocker, mock_qt):
     'If we do not have two different iterators, then it should do nothing'
-    'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
     g = Graph(directed=True)
 
     # Now, the two nodes that have different iterator sequences
@@ -574,6 +573,38 @@ def test_two_iterators_same_iterator(mocker, mock_qt):
     assert get_v_info(node4).sequence is seq4
 
 
+def test_two_same_iterators_from_one_node(mocker, mock_qt):
+    'A node has two dependent iterators, but they are the same iterator'
+    'If we do not have two different iterators, then it should do nothing'
+    g = Graph(directed=True)
+
+    # Now, the three nodes, one uses one iterator sequence, the other two use a second one.
+    a2 = ast.Num(n=2)
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a3 = ast.Num(n=3)
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a3, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a4 = ast.Num(n=3)
+    node4 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a4, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    # Next, the node that uses both of them.
+    a5 = ast.Num(n=4)
+    seq5 = mocker.MagicMock(spec=expression_transform)
+    ast_name_dict: Dict[str, ast.AST] = {"a2": a2, "a3": a3, "a4": a4}
+    seq5.render_ast.return_value = parse_ast_string("a2 + e1000", ast_name_dict)
+    node5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a5, order=1, seq=seq5))
+    g.add_edge(node5, node2, info=e_info(True, 1))
+    g.add_edge(node5, node3, info=e_info(False, 2))
+    g.add_edge(node5, node4, info=e_info(False, 2))
+
+    # Now do the iterator reduction. It should hit this node.
+    reduce_iterator_chaining(g, level=2, qt=mock_qt)
+
+    # However, the sequence should have changed into some thing that is a second derivation.
+    new_seq5 = get_v_info(node5).sequence
+    assert MatchAST("Select(a3, lambda e1000: a2 + e1000)", ast_name_dict) == new_seq5.render_ast({})
+    seq5.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000')}))
 
 
 def test_single_to_zero(mocker, mock_qt):
