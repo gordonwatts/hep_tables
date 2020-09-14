@@ -261,6 +261,45 @@ def test_attribute_implied_loop(mocker):
     assert MatchAST("e1000.pt()") == seq.render_ast({a: ast.Name(id='e1000')})
 
 
+def test_attribute_second_to_the_party(mocker):
+    'Add a second dependent leaf to a node and make sure it reuses the original iterator'
+    a = ast.Name(id='a')
+    pt = ast.Attribute(value=a, attr='pt')
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+
+    def attr_type(attr_type: Type, attr_name: str) -> Optional[Type]:
+        if attr_type == Iterable[Jets]:
+            return None
+        if attr_type == Jets:
+            return Callable[[], float]
+        assert False, f'called for type {attr_type} - no idea'
+
+    t_mock.attribute_type.side_effect = attr_type
+    t_mock.callable_type.return_value = ([], float)
+
+    def iterator_unroll(t: Type) -> Type:
+        if t == Iterable[Iterable[Jets]]:
+            return Iterable[Jets]
+        if t == Iterable[Jets]:
+            return Jets
+        assert False, "we should not have been called"
+
+    t_mock.iterable_object.side_effect = iterator_unroll
+
+    g = Graph(directed=True)
+    a_vtx = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[Jets]], a))
+    a_leaf = g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], ast.Num(n=22)))
+    g.add_edge(a_leaf, a_vtx, info=e_info(True, 3))
+
+    ast_to_graph(pt, g, t_mock)
+
+    edges = a_vtx.in_edges()
+    assert len(edges) == 2
+
+    assert all(get_e_info(e).itr_idx == 3 for e in edges)
+
+
 @pytest.mark.parametrize("operator", [ast.FloorDiv, ast.LShift, ast.RShift, ast.BitOr, ast.BitXor, ast.BitAnd, ast.MatMult])
 def test_binary_op_unsupported(operator, mocker):
     'Test the binary operators'

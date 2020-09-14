@@ -100,9 +100,16 @@ class _translate_to_sequence(ast.NodeVisitor):
         for i in range(depth):
             seq_out_type = Iterable[seq_out_type]  # type: ignore
 
-        # Iterator tracking: understand if this iterator is the same as the last one or we are using
-        # a new one because we are down a level.
-        itr_index = _parent_iterator_index(v_source) if depth == vs_meta.level else get_g_info(self._g).next_iter_index()
+        # Understand if the iterator has changed. By construction (currently) all iterators must be
+        # in common coming from a single vertex - so if one has been already used, start with that.
+        # This will change when we allow things like jet-chaining.
+        already_used_itr = _child_iterator_in_use(v_source)
+        if already_used_itr is not None:
+            itr_index = already_used_itr
+        elif depth == vs_meta.level:
+            itr_index = _parent_iterator_index(v_source) 
+        else:
+            itr_index = get_g_info(self._g).next_iter_index()
 
         # Code this up as a call, propagating the sequence return type.
         function_call = ast.Call(func=ast.Attribute(value=node.value, attr=node.attr), args=[], keywords=[])
@@ -336,3 +343,21 @@ def _parent_iterator_index(v_source: Vertex) -> int:
         if i.main:
             return i.itr_idx
     assert False, 'Internal programing error - should always have a main sequence'
+
+
+def _child_iterator_in_use(v_source: Vertex) -> Optional[int]:
+    '''Find another dependent of `v_source` and return the iterator in use. Return None if
+    we can't find it.
+
+    Args:
+        v_source (Vertex): The vertex to search for dependent expressions on
+
+    Returns:
+        Optional[int]: None if no dependent vertices were found, otherwise the iterator.
+    '''
+    edges = v_source.in_edges()
+    if len(edges) == 0:
+        return None
+
+    # All edges going out from a vertex must (currently) use the same iterator.
+    return get_e_info(edges[0]).itr_idx
