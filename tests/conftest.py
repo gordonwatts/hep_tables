@@ -132,6 +132,17 @@ def parse_ast_string(s: str, name_replacements: Dict[str, ast.AST] = {}) -> ast.
                 return name_replacements[node.id]
             else:
                 return node
+
+        def visit_Call(self, node: ast.Call) -> Any:
+            if not isinstance(node.func, ast.Name):
+                return self.generic_visit(node)
+            if node.func.id != 'astIteratorPlaceholder':
+                return self.generic_visit(node)
+
+            args = [ast.literal_eval(a) for a in node.args]
+
+            return astIteratorPlaceholder(*args)
+
     return replace_it().visit(ast.parse(s).body[0].value)  # type:ignore
 
 

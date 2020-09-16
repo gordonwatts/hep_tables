@@ -110,7 +110,7 @@ def test_downlevel_with_index_one(mocker):
     my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder([0])}
     rendered = down.render_ast(my_dict)
 
-    assert MatchAST("Select(astIteratorPlaceholder, lambda e1001: e1001)") == rendered
+    assert MatchAST("Select(astIteratorPlaceholder([0]), lambda e1001: e1001)") == rendered
     c_args = s.render_ast.call_args[0][0]
     assert a_ref in c_args
     v = c_args[a_ref]
@@ -128,7 +128,7 @@ def test_downlevel_with_index_two(mocker):
     my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder([0, 1])}
     rendered = down.render_ast(my_dict)
 
-    assert MatchAST("Select(astIteratorPlaceholder, lambda e1001: e1001[0])") == rendered
+    assert MatchAST("Select(astIteratorPlaceholder([0, 1]), lambda e1001: e1001[0])") == rendered
     c_args = s.render_ast.call_args[0][0]
     assert a_ref in c_args
     v = c_args[a_ref]

@@ -40,7 +40,7 @@ def test_source_and_single_generator(mocker, mock_root_sequence_transform):
     r = build_linq_expression(g)
 
     assert r is proper_return
-    seq_met.sequence.assert_called_with(mine, MatchASTDict({a1: astIteratorPlaceholder()}))
+    seq_met.sequence.assert_called_with(mine, MatchASTDict({a1: astIteratorPlaceholder([None])}))
 
 
 def test_level_appropriate(mocker, mock_root_sequence_transform):

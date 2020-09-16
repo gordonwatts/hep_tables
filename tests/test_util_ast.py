@@ -36,6 +36,16 @@ def test_level_twice_fail():
         a.set_level_index(3)
 
 
+def test_ast_dump():
+    a = astIteratorPlaceholder()
+    assert ast.dump(a) == 'astIteratorPlaceholder(level_index=[])'
+
+
+def test_ast_dump_with_deep():
+    a = astIteratorPlaceholder([1, 2])
+    assert ast.dump(a) == 'astIteratorPlaceholder(level_index=[1, 2])'
+
+
 def test_set_holder_level_index():
     a = astIteratorPlaceholder()
     t = ast.Tuple(elts=[a])

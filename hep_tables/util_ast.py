@@ -5,6 +5,7 @@ from dataframe_expressions.utils_ast import CloningNodeTransformer
 
 
 class astIteratorPlaceholder(ast.AST):
+    _fields = ('level_index',)
     '''A place holder for the actual variable that references
     the main iterator sequence objects.
 
@@ -13,7 +14,7 @@ class astIteratorPlaceholder(ast.AST):
     the next level down.
     '''
     def __init__(self, level_index: List[Optional[int]] = []):
-        self._level_index = level_index
+        self.level_index = level_index
         self._new_level = None
 
     @property
@@ -36,7 +37,7 @@ class astIteratorPlaceholder(ast.AST):
             List[int]: The tuple access index, by level. With deepest level first. A `None` indicates
             that no indexing should occur at that particular level.
         '''
-        return self._level_index
+        return self.level_index
 
     def set_level_index(self, index: int):
         '''Sets the index for this placeholder at the current level. It is not possible to set more
