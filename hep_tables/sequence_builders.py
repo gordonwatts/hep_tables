@@ -1,4 +1,6 @@
 import ast
+from hep_tables.util_graph import parent_iterator_index
+from hep_tables.util_ast import astIteratorPlaceholder
 from typing import Iterable, Optional, Type, Union, cast
 
 from dataframe_expressions.asts import ast_Callable, ast_DataFrame, ast_FunctionPlaceholder
@@ -107,7 +109,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         if already_used_itr is not None:
             itr_index = already_used_itr
         elif depth == vs_meta.level:
-            itr_index = _parent_iterator_index(v_source) 
+            itr_index = parent_iterator_index(v_source)
         else:
             itr_index = get_g_info(self._g).next_iter_index()
 
@@ -115,7 +117,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         function_call = ast.Call(func=ast.Attribute(value=node.value, attr=node.attr), args=[], keywords=[])
         t = expression_transform(function_call)
 
-        v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, node))
+        v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, {node: astIteratorPlaceholder(itr_index)}))
         self._g.add_edge(v, v_source, info=e_info(True, itr_index))
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
@@ -168,11 +170,12 @@ class _translate_to_sequence(ast.NodeVisitor):
         s = expression_transform(l_func_body)
 
         # Figure out if we are using the same index or not
-        left_index = _parent_iterator_index(left)
-        right_index = _parent_iterator_index(right)
+        left_index = parent_iterator_index(left)
+        right_index = parent_iterator_index(right)
 
         # Create the vertex and connect to a and b via edges
-        op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, node))
+        # We make, arbitrarily, the left sequence the main sequence (left is better!)
+        op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, {node: astIteratorPlaceholder(left_index)}))
         self._g.add_edge(op_vertex, left, info=e_info(True, left_index))
         self._g.add_edge(op_vertex, right, info=e_info(False, right_index))
 
@@ -196,7 +199,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         self._g.add_vertex(info=v_info(0,
                                        root_sequence_transform(df),
                                        Iterable[df.table_type],  # type: ignore
-                                       node))
+                                       {node: astIteratorPlaceholder(get_g_info(self._g).next_iter_index())}))
 
     def visit_Call(self, node: ast.Call) -> None:
         '''Dispatch a call
@@ -310,13 +313,13 @@ class _translate_to_sequence(ast.NodeVisitor):
         seq = expression_transform(transform_body)
         for i in range(level):
             return_type = Iterable[return_type]  # type: ignore
-        v_i = v_info(level, seq, return_type, node)
+        v_i = v_info(level, seq, return_type, {node: astIteratorPlaceholder(parent_iterator_index(arg_vtx[0]))})
         new_v = self._g.add_vertex(info=v_i)
 
         main_seq = True
         for v in arg_vtx:
             assert get_v_info(v).level == level, 'TODO: Make sure this test case is covered for edge index'
-            self._g.add_edge(new_v, v, info=e_info(main_seq, _parent_iterator_index(v)))
+            self._g.add_edge(new_v, v, info=e_info(main_seq, parent_iterator_index(v)))
             main_seq = False
 
 
@@ -326,23 +329,6 @@ def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:
     v_list = list(g.vs.select(lambda v: get_v_info(v).node is node))
     assert len(v_list) == 1, f'Internal error: Should be only one node per vertex - found {len(v_list)}'
     return v_list[0]
-
-
-def _parent_iterator_index(v_source: Vertex) -> int:
-    '''Given a vertex, find its main sequence in, and figure out the iterator number for it.
-
-    Args:
-        v_source (Vertex): The vertex which we will look at its input for.
-
-    Returns:
-        int: The index that was used.
-    '''
-    edges = v_source.out_edges()
-    for e in edges:
-        i = get_e_info(e)
-        if i.main:
-            return i.itr_idx
-    assert False, 'Internal programing error - should always have a main sequence'
 
 
 def _child_iterator_in_use(v_source: Vertex) -> Optional[int]:

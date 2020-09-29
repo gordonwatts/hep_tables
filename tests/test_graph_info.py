@@ -12,7 +12,7 @@ from hep_tables.util_ast import astIteratorPlaceholder
 def test_node_info_basic(mocker):
     dummy_seq = mocker.MagicMock(spec=sequence_predicate_base)
     a = ast.Name(id='a')
-    v_info(1, dummy_seq, Iterable[int], a)
+    v_info(1, dummy_seq, Iterable[int], {a: astIteratorPlaceholder(1)})
 
 
 def test_get_metadata(mocker):
@@ -24,13 +24,13 @@ def test_get_metadata(mocker):
 
 
 def test_copy_v_info_no_param(mocker):
-    v1 = v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name(id='a'))
+    v1 = v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {ast.Name(id='a'): astIteratorPlaceholder(1)})
     v2 = copy_v_info(v1)
     assert v1 == v2
 
 
 def test_copy_v_info_new_level(mocker):
-    v1 = v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name(id='a'))
+    v1 = v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {ast.Name(id='a'): astIteratorPlaceholder(1)})
     v2 = copy_v_info(v1, new_level=2)
     assert v1 != v2
     assert v1.level == 1
@@ -38,7 +38,7 @@ def test_copy_v_info_new_level(mocker):
 
 
 def test_copy_v_info_new_seq(mocker):
-    v1 = v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], ast.Name(id='a'))
+    v1 = v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {ast.Name(id='a'): astIteratorPlaceholder(1)})
     new_seq = mocker.MagicMock(spec=sequence_predicate_base)
     v2 = copy_v_info(v1, new_sequence=new_seq)
     assert v1 != v2
@@ -47,7 +47,7 @@ def test_copy_v_info_new_seq(mocker):
 
 def test_get_node_ast_dict_with_single(mocker):
     a = ast.Name(id='a')
-    v1 = v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], a)
+    v1 = v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {a: astIteratorPlaceholder(1)})
     d = v1.node_as_dict
     assert len(d) == 1
     assert a in d

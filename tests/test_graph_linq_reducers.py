@@ -54,6 +54,7 @@ def test_downlevel_one(mocker, mock_root_sequence_transform, mock_qt):
     assert isinstance(s, sequence_downlevel)
     assert s.transform is seq_met
     assert s.sequence_ast is a1
+    assert s.iterator_idx == 1
 
 
 def test_main_seq_seen_on_2node_reduction(mocker, mock_qt):
@@ -124,7 +125,7 @@ def test_downlevel_with_combined_node(mocker, mock_qt):
     g = Graph(directed=True)
     a1_1 = ast.Num(n=1)
     a1_2 = ast.Num(n=2)
-    node_0 = g.add_vertex(info=mock_vinfo(mocker, node={a1_1: astIteratorPlaceholder(), a1_2: astIteratorPlaceholder()},
+    node_0 = g.add_vertex(info=mock_vinfo(mocker, node={a1_1: astIteratorPlaceholder(1), a1_2: astIteratorPlaceholder(1)},
                                           seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
 
     a2 = ast.Num(n=2)
@@ -292,8 +293,8 @@ def test_tuple_2levels(mocker, mock_qt):
     a_2_1 = ast.Constant(1)
     a_2_2 = ast.Constant(2)
     ast_dict: Dict[ast.AST, ast.AST] = {
-        a_2_1: astIteratorPlaceholder([0]),
-        a_2_2: astIteratorPlaceholder([1]),
+        a_2_1: astIteratorPlaceholder(1, [0]),
+        a_2_2: astIteratorPlaceholder(1, [1]),
     }
     level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=ast_dict, seq=mocker.MagicMock(spec=expression_transform), order=1))
     g.add_edge(level_2, level_1, info=e_info(True, 1))

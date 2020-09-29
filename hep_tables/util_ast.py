@@ -5,7 +5,7 @@ from dataframe_expressions.utils_ast import CloningNodeTransformer
 
 
 class astIteratorPlaceholder(ast.AST):
-    _fields = ('level_index',)
+    _fields = ('itr_idx', 'level_index',)
     '''A place holder for the actual variable that references
     the main iterator sequence objects.
 
@@ -13,7 +13,15 @@ class astIteratorPlaceholder(ast.AST):
     next level down. The issue is that the place we set the next index is far away from the place where we set
     the next level down.
     '''
-    def __init__(self, level_index: List[Optional[int]] = []):
+    def __init__(self, itr_idx: int, level_index: List[Optional[int]] = []):
+        '''Iterator placeholder in an expression.
+
+        Args:
+            iterator_number (int): The iterator number this placeholder represents.
+            level_index (List[Optional[int]], optional): Dereferencing index at a particular level.
+                Defaults to [].
+        '''
+        self.itr_idx = itr_idx
         self.level_index = level_index
         self._new_level = None
 
@@ -25,6 +33,15 @@ class astIteratorPlaceholder(ast.AST):
             Optional[int]: None if no level index has been specified yet, otherwise the index.
         '''
         return self._new_level
+
+    @property
+    def iterator_number(self) -> int:
+        '''Return the iterator number this placeholder is tracking.
+
+        Returns:
+            int: The iterator number for the sequence.
+        '''
+        return self.itr_idx
 
     @property
     def levels(self) -> List[Optional[int]]:
@@ -57,43 +74,52 @@ class astIteratorPlaceholder(ast.AST):
         Returns:
             astIteratorPlaceHolder: Contains the new placeholder, with the new level in place.
         '''
-        return astIteratorPlaceholder(self.levels + [self._new_level])
+        return astIteratorPlaceholder(self.itr_idx, self.levels + [self._new_level])
 
 
 class replace_holder(CloningNodeTransformer):
-    def __init__(self, v_name: Union[str, ast.AST]):
+    def __init__(self, itr_id: int, v_name: Union[str, ast.AST]):
         super().__init__()
+        self._id = itr_id
         if isinstance(v_name, str):
             self._v = ast.Name(id=v_name)
         else:
             self._v = v_name
 
     def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> ast.AST:
-        if len(node.levels) == 0 or node.levels[-1] is None:
-            return self._v
+        if node.iterator_number == self._id:
+            if len(node.levels) == 0 or node.levels[-1] is None:
+                return self._v
+            else:
+                return ast.Subscript(value=self._v, slice=ast.Index(value=ast.Num(n=node.levels[-1])))
         else:
-            return ast.Subscript(value=self._v, slice=ast.Index(value=ast.Num(n=node.levels[-1])))
+            return node
 
 
 class set_holder_level_index(ast.NodeVisitor):
-    def __init__(self, new_level: int):
+    def __init__(self, itr_id: int, new_level: int):
         super().__init__()
         self._new_level = new_level
+        self._id = itr_id
 
     def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder):
-        node.set_level_index(self._new_level)
+        if self._id == node.iterator_number:
+            node.set_level_index(self._new_level)
 
 
 class add_level_to_holder(CloningNodeTransformer):
-    def __init__(self):
+    def __init__(self, itr_id: int):
         super().__init__()
+        self._id = itr_id
 
     def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> astIteratorPlaceholder:
-        new_level = node.next_level()
-        return new_level
+        if node.iterator_number == self._id:
+            new_level = node.next_level()
+            return new_level
+        return node
 
 
-def reduce_holder_by_level(d: Dict[ast.AST, ast.AST]) -> Dict[ast.AST, ast.AST]:
+def reduce_holder_by_level(itr_id: int, d: Dict[ast.AST, ast.AST]) -> Dict[ast.AST, ast.AST]:
     '''Replace any `astIteratorPlaceholders` with a version with one less level.
 
     Args:
@@ -105,9 +131,13 @@ def reduce_holder_by_level(d: Dict[ast.AST, ast.AST]) -> Dict[ast.AST, ast.AST]:
     class drop_holder_by_level(CloningNodeTransformer):
         def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> astIteratorPlaceholder:
             'Drop the level list by one if we can'
+            if node.iterator_number != itr_id:
+                return node
+
             if len(node.levels) == 0:
                 return node
-            return astIteratorPlaceholder(node.levels[:-1])
+
+            return astIteratorPlaceholder(node.iterator_number, node.levels[:-1])
 
     c = drop_holder_by_level()
     return {k: c.visit(v) for k, v in d.items()}

@@ -9,7 +9,7 @@ from hep_tables.graph_info import (
     copy_v_info, e_info, get_e_info, get_v_info, v_info)
 from hep_tables.transforms import expression_transform, expression_tuple, sequence_downlevel
 from hep_tables.util_ast import add_level_to_holder, set_holder_level_index
-from hep_tables.util_graph import depth_first_traversal
+from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge
 from hep_tables.utils import QueryVarTracker
 
 
@@ -57,12 +57,12 @@ def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
     assert level > 0, f'Internal programming error: cannot reduce level {level} - must be 2 or larger'
     for v in (a_good_v for a_good_v in g.vs() if get_v_info(a_good_v).level == level):
         vs_meta = get_v_info(v)
-        main_seq = [e for e in v.out_edges() if get_e_info(e).main]
-        assert len(main_seq) == 1, f'Internal error - only one edge can be labeled main_seq (not {len(main_seq)})'
-        main_seq_asts = get_v_info(main_seq[0].target_vertex).node_as_dict
+        main_seq_edge = find_main_seq_edge(v)
+        main_seq_asts = get_v_info(main_seq_edge.target_vertex).node_as_dict
         main_seq_ast = list(main_seq_asts.keys())[0]
-        new_seq = sequence_downlevel(vs_meta.sequence, qv.new_var_name(), main_seq_ast)
-        new_node_dict = {k: add_level_to_holder().visit(v) for k, v in vs_meta.node_as_dict.items()}
+        main_seq_iterator_idx = get_e_info(main_seq_edge).itr_idx
+        new_seq = sequence_downlevel(vs_meta.sequence, qv.new_var_name(), main_seq_iterator_idx, main_seq_ast)
+        new_node_dict = {k: add_level_to_holder(main_seq_iterator_idx).visit(v) for k, v in vs_meta.node_as_dict.items()}
         v['info'] = copy_v_info(vs_meta, new_sequence=new_seq, new_level=level - 1, new_node=new_node_dict)
 
 
@@ -108,11 +108,14 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
                 transforms = []
                 ast_list = {}
                 for index, v in enumerate(sorted(p_group, key=lambda k: get_v_info(k).order)):
+                    # Get the main sequence first
+                    main_edge = find_main_seq_edge(v)
+
                     # Track this transform in the tuple
                     vs_meta = get_v_info(v)
                     transforms.append(vs_meta.sequence)
                     for key, val in vs_meta.node_as_dict.items():
-                        set_holder_level_index(index).visit(val)
+                        set_holder_level_index(get_e_info(main_edge).itr_idx, index).visit(val)
                         ast_list[key] = val
 
                     # Update edges to vertices that depend on us
@@ -165,7 +168,7 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
                 # Assume all parents of a single iterator have the same path back to that iterator.
                 var_name = qt.new_var_name()
                 new_expr = seq.render_ast({parent_asts[0]: ast.Name(id=var_name)})
-                seq = sequence_downlevel(expression_transform(new_expr), var_name, parent_asts[0])
+                seq = sequence_downlevel(expression_transform(new_expr), var_name, i, parent_asts[0])
             # Update vertex and edges
             new_v_info = copy_v_info(get_v_info(v), new_sequence=seq)
             v['info'] = new_v_info

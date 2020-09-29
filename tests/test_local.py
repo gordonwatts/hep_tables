@@ -51,6 +51,7 @@ def DeltaR(eta1: float, phi1: float, eta2: float, phi2: float) -> float:
 
 def test_collect_pts(servicex_ds):
     'Two level test going from xaod_table to a qastle query: integration test'
+
     f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f, table_type_info=AnEvent)
     seq = df.jets.pt

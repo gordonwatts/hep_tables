@@ -113,7 +113,7 @@ class sequence_predicate_base(expression_predicate_base):
 class sequence_downlevel(sequence_predicate_base):
     '''Hold onto a transform that has to be processed one level down (a nested select
     statement that allows us to access an array of an array)'''
-    def __init__(self, transform: expression_predicate_base, var_name: str, main_seq_ast: Optional[ast.AST] = None):
+    def __init__(self, transform: expression_predicate_base, var_name: str, itr_id: int, main_seq_ast: Optional[ast.AST] = None):
         '''Create a transform that will operate on the items in an array that is in the current sequence.
 
         `b: b.Select(j: transform(j))`
@@ -121,11 +121,13 @@ class sequence_downlevel(sequence_predicate_base):
         Args:
             transform (sequence_predicate_base): The transform to operate on the array of array elements in the stream.
             var_name (str): The name of the variable we will use in our Select statement.
+            itr_id (int): The iterator index we are looping over
             main_seq_ast (ast.AST): The AST that represents the main sequence we are iterating over.
 
         '''
         self._transform = transform
         self._var_name = var_name
+        self._id = itr_id
         self._main_seq = main_seq_ast
 
     @property
@@ -135,6 +137,10 @@ class sequence_downlevel(sequence_predicate_base):
     @property
     def sequence_ast(self) -> Optional[ast.AST]:
         return self._main_seq
+
+    @property
+    def iterator_idx(self) -> int:
+        return self._id
 
     def sequence(self, sequence: Optional[ObjectStream], seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
         '''Render the sub-expression and run a Select on the item
@@ -147,10 +153,10 @@ class sequence_downlevel(sequence_predicate_base):
             ObjectStream: The new, output, sequence
         '''
         # Render the down-level items - which means going "deep" on the place holder levels.
-        downlevel_dict = reduce_holder_by_level(seq_dict)
+        downlevel_dict = reduce_holder_by_level(self._id, seq_dict)
         sub_expr = self._transform.render_ast(downlevel_dict)
 
-        select_func = lambda_build(self._var_name, replace_holder(self._var_name).visit(sub_expr))
+        select_func = lambda_build(self._var_name, replace_holder(self._id, self._var_name).visit(sub_expr))
         return sequence.Select(select_func)
 
     def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:

@@ -5,9 +5,9 @@ from typing import Dict, Optional
 from func_adl.object_stream import ObjectStream
 from igraph import Graph
 
-from hep_tables.graph_info import get_v_info
+from hep_tables.graph_info import get_e_info, get_v_info
 from hep_tables.transforms import sequence_predicate_base
-from hep_tables.util_graph import depth_first_traversal
+from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge
 
 
 def build_linq_expression(exp_graph: Graph) -> ObjectStream:
@@ -27,10 +27,14 @@ def build_linq_expression(exp_graph: Graph) -> ObjectStream:
         v = vertices_at_step[0]
 
         v_meta = get_v_info(v)
+        main_index: int = 0
+        if len(v.out_edges()) > 0:
+            main_index = get_e_info(find_main_seq_edge(v)).itr_idx
+
         seq = v_meta.sequence
         assert isinstance(seq, sequence_predicate_base), 'Internal error - everything should be by now'
         build_sequence = seq.sequence(build_sequence, ast_dict)
-        ast_dict = {k: add_level_to_holder().visit(v)
+        ast_dict = {k: add_level_to_holder(main_index).visit(v)
                     for k, v in v_meta.node_as_dict.items()}
 
     assert build_sequence is not None

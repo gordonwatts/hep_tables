@@ -74,9 +74,9 @@ def mock_vinfo(mocker, level: int = 0, node: Optional[Union[ast.AST, Dict[ast.AS
     type(info).node_as_dict = p_node_as_dict
     if isinstance(node, ast.AST):
         p_node.return_value = node
-        p_node_as_dict.return_value = {node: astIteratorPlaceholder()}
+        p_node_as_dict.return_value = {node: astIteratorPlaceholder(1)}
     else:
-        if node == None:
+        if node is None:
             p_node.side_effect = Exception('node was not specified')
             p_node_as_dict.side_effect = Exception('not was not specified')
         elif len(node) == 1:
@@ -126,9 +126,7 @@ def parse_ast_string(s: str, name_replacements: Dict[str, ast.AST] = {}) -> ast.
     '''
     class replace_it(ast.NodeTransformer):
         def visit_Name(self, node: ast.Name) -> ast.AST:
-            if node.id == 'astIteratorPlaceholder':
-                return astIteratorPlaceholder()
-            elif node.id in name_replacements:
+            if node.id in name_replacements:
                 return name_replacements[node.id]
             else:
                 return node
@@ -172,8 +170,11 @@ class MatchAST:
 
 
 class MatchASTDict:
-    def __init__(self, true_dict: Dict[ast.AST, ast.AST]):
-        self._true = true_dict
+    def __init__(self, true_dict: Dict[ast.AST, Union[ast.AST, str]]):
+        self._true = {
+            k: v if isinstance(v, ast.AST) else parse_ast_string(v)
+            for k, v in true_dict.items()
+        }
 
     def __eq__(self, o: object) -> bool:
         if not isinstance(o, dict):
@@ -185,7 +186,14 @@ class MatchASTDict:
         if set(o.keys()) != set(self._true.keys()):
             return False
 
-        return all(ast.dump(o[k]) == ast.dump(self._true[k]) for k in self._true.keys())
+        for k in self._true.keys():
+            other = ast.dump(o[k])
+            truth = ast.dump(self._true[k])
+            if other != truth:
+                print(f'truth: {truth}')
+                print(f' test: {other}')
+                return False
+        return True
 
 
 class MatchObjectSequence:

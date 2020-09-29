@@ -11,7 +11,7 @@ from hep_tables.transforms import (
     expression_predicate_base, expression_transform, expression_tuple,
     root_sequence_transform, sequence_downlevel, sequence_predicate_base)
 
-from .conftest import MatchAST, MatchObjectSequence, parse_ast_string
+from .conftest import MatchAST, MatchASTDict, MatchObjectSequence, parse_ast_string
 
 
 def test_sequence_predicate_base():
@@ -75,7 +75,7 @@ def test_downlevel_one_sequence(mocker):
     'Test a simple constant for the transform - sequence'
     s = mocker.MagicMock(spec=expression_predicate_base)
     s.render_ast.return_value = ast.Num(n=1.0)
-    down = sequence_downlevel(s, "e1000")
+    down = sequence_downlevel(s, "e1000", 1)
 
     assert down.transform is s
 
@@ -91,12 +91,12 @@ def test_downlevel_one_ast(mocker):
     'Test a simple constant for the transform - render_ast'
     s = mocker.MagicMock(spec=expression_predicate_base)
     s.render_ast.return_value = ast.Num(n=1.0)
-    down = sequence_downlevel(s, "e1000", astIteratorPlaceholder())
+    down = sequence_downlevel(s, "e1000", 1, ast.Name('a'))
 
     my_dict = {}
     rendered = down.render_ast(my_dict)
 
-    assert MatchAST("Select(astIteratorPlaceholder, lambda e1000: 1.0)") == rendered
+    assert MatchAST("Select(a, lambda e1000: 1.0)") == rendered
     s.render_ast.assert_called_with(my_dict)
 
 
@@ -105,17 +105,13 @@ def test_downlevel_with_index_one(mocker):
     s = mocker.MagicMock(spec=expression_predicate_base)
     a_ref = ast.Num(n=1.0)
     s.render_ast.return_value = ast.Name('e1001')
-    down = sequence_downlevel(s, "e1001", a_ref)
+    down = sequence_downlevel(s, "e1001", 1, a_ref)
 
-    my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder([0])}
+    my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder(1, [0])}
     rendered = down.render_ast(my_dict)
 
-    assert MatchAST("Select(astIteratorPlaceholder([0]), lambda e1001: e1001)") == rendered
-    c_args = s.render_ast.call_args[0][0]
-    assert a_ref in c_args
-    v = c_args[a_ref]
-    assert isinstance(v, astIteratorPlaceholder)
-    assert v.levels == []
+    assert MatchAST("Select(astIteratorPlaceholder(1, [0]), lambda e1001: e1001)") == rendered
+    s.render_ast.assert_called_with(MatchASTDict({a_ref: "astIteratorPlaceholder(1, [])"}))
 
 
 def test_downlevel_with_index_two(mocker):
@@ -123,28 +119,38 @@ def test_downlevel_with_index_two(mocker):
     s = mocker.MagicMock(spec=expression_predicate_base)
     a_ref = ast.Num(n=1.0)
     s.render_ast.return_value = ast.Subscript(value=ast.Name('e1001'), slice=ast.Index(value=ast.Num(n=0)))
-    down = sequence_downlevel(s, "e1001", a_ref)
+    down = sequence_downlevel(s, "e1001", 1, a_ref)
 
-    my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder([0, 1])}
+    my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder(1, [0, 1])}
     rendered = down.render_ast(my_dict)
 
-    assert MatchAST("Select(astIteratorPlaceholder([0, 1]), lambda e1001: e1001[0])") == rendered
-    c_args = s.render_ast.call_args[0][0]
-    assert a_ref in c_args
-    v = c_args[a_ref]
-    assert isinstance(v, astIteratorPlaceholder)
-    assert v.levels == [0]
+    assert MatchAST("Select(astIteratorPlaceholder(1, [0, 1]), lambda e1001: e1001[0])") == rendered
+    s.render_ast.assert_called_with(MatchASTDict({a_ref: "astIteratorPlaceholder(1, [0])"}))
+
+
+def test_downlevel_not_right_itr_index(mocker):
+    'Pass in a single index down'
+    s = mocker.MagicMock(spec=expression_predicate_base)
+    a_ref = ast.Num(n=1.0)
+    s.render_ast.return_value = ast.Subscript(value=ast.Name('e1001'), slice=ast.Index(value=ast.Num(n=0)))
+    down = sequence_downlevel(s, "e1001", 2, a_ref)
+
+    my_dict: Dict[ast.AST, ast.AST] = {a_ref: astIteratorPlaceholder(1, [0, 1])}
+    rendered = down.render_ast(my_dict)
+
+    assert MatchAST("Select(astIteratorPlaceholder(1, [0, 1]), lambda e1001: e1001[0])") == rendered
+    s.render_ast.assert_called_with(MatchASTDict({a_ref: "astIteratorPlaceholder(1, [0,1])"}))
 
 
 def test_downlevel_two_ast(mocker):
     s = mocker.MagicMock(spec=expression_predicate_base)
-    s.render_ast.return_value = parse_ast_string("Select(astIteratorPlaceholder, lambda e1000: 1.0)")
-    down = sequence_downlevel(s, "e1001", astIteratorPlaceholder())
+    s.render_ast.return_value = parse_ast_string("Select(astIteratorPlaceholder(1,[]), lambda e1000: 1.0)")
+    down = sequence_downlevel(s, "e1001", 1, ast.Name('d'))
 
     my_dict = {}
     rendered = down.render_ast(my_dict)
 
-    assert MatchAST("Select(astIteratorPlaceholder, lambda e1001: Select(e1001, lambda e1000: 1.0))") == rendered
+    assert MatchAST("Select(d, lambda e1001: Select(e1001, lambda e1000: 1.0))") == rendered
     s.render_ast.assert_called_with(my_dict)
 
 
