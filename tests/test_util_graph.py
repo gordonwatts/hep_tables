@@ -1,6 +1,13 @@
-from tests.conftest import mock_vinfo
+import ast
+
+from hep_tables.graph_info import e_info
+
+import pytest
+from hep_tables.util_ast import astIteratorPlaceholder
+from hep_tables.util_graph import child_iterator_in_use, depth_first_traversal, get_iterator_index, parent_iterator_index
 from igraph import Graph
-from hep_tables.util_graph import depth_first_traversal
+
+from tests.conftest import mock_vinfo
 
 
 def test_traversal_empty():
@@ -56,3 +63,70 @@ def test_traversal_ordered_2(mocker):
     r = list(depth_first_traversal(g))
     assert r[1][0] == a3
     assert r[1][1] == a2
+
+
+def test_parent_iterator_single(mocker):
+    g = Graph(directed=True)
+    v = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+
+    assert parent_iterator_index(v) == 1
+
+
+def test_parent_iterator_single_fail(mocker):
+    g = Graph(directed=True)
+    v = g.add_vertex(info=mock_vinfo(mocker, node={
+        ast.Constant(10): astIteratorPlaceholder(1),
+        ast.Constant(20): astIteratorPlaceholder(2),
+    }))
+
+    with pytest.raises(Exception):
+        parent_iterator_index(v)
+
+
+def test_parent_iterator_linked(mocker):
+    g = Graph(directed=True)
+    g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    v2 = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    g.add_edge(v2, v2, info=e_info(True, 2))
+
+    assert parent_iterator_index(v2) == 2
+
+
+def test_child_itr_good_child(mocker):
+    g = Graph(directed=True)
+    v_p = g.add_vertex(info=mock_vinfo(mocker, level=1, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    v = g.add_vertex(info=mock_vinfo(mocker, level=1, node={ast.Constant(10): astIteratorPlaceholder(2)}))
+    g.add_edge(v, v_p, info=e_info(True, 1))
+
+    assert child_iterator_in_use(v_p, 1) == 2
+
+
+def test_child_itr_bad_level_child(mocker):
+    g = Graph(directed=True)
+    v_p = g.add_vertex(info=mock_vinfo(mocker, level=1, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    v = g.add_vertex(info=mock_vinfo(mocker, level=2, node={ast.Constant(10): astIteratorPlaceholder(2)}))
+    g.add_edge(v, v_p, info=e_info(True, 1))
+
+    assert child_iterator_in_use(v_p, 1) is None
+
+
+def test_child_itr_no_children(mocker):
+    g = Graph(directed=True)
+    v = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+
+    assert child_iterator_in_use(v, 1) is None
+
+
+def test_get_iter_index_one(mocker):
+    g = Graph(directed=True)
+    v = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+
+    assert get_iterator_index(v) == 1
+
+
+def test_get_iter_index_one_two(mocker):
+    g = Graph(directed=True)
+    v = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(2)}))
+
+    with pytest.raises(Exception):
+        get_iterator_index(v)

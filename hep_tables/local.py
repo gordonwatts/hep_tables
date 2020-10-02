@@ -118,6 +118,7 @@ async def _new_make_local_async(df: DataFrame) -> Any:
     g = ast_to_graph(expression, context=context)
     run_linear_reduction(g, qt)
     o_stream = build_linq_expression(g)
+    logging.getLogger(__name__).debug(f'Going to ask for value of ast {ast.dump(o_stream._ast)}')
 
     # And get the return back.
     # Note that the `default_col_name` is there to deal with testing - when we have a file

@@ -1,5 +1,5 @@
 import ast
-from hep_tables.util_graph import parent_iterator_index
+from hep_tables.util_graph import child_iterator_in_use, get_iterator_index, parent_iterator_index
 from hep_tables.util_ast import astIteratorPlaceholder
 from typing import Iterable, Optional, Type, Union, cast
 
@@ -8,7 +8,7 @@ from dataframe_expressions.render_dataframe import render_callable, render_conte
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
-from hep_tables.graph_info import e_info, g_info, get_e_info, get_g_info, get_v_info, v_info
+from hep_tables.graph_info import e_info, g_info, get_g_info, get_v_info, v_info
 from hep_tables.hep_table import xaod_table
 from hep_tables.transforms import expression_transform, root_sequence_transform
 from hep_tables.type_info import type_inspector
@@ -105,11 +105,11 @@ class _translate_to_sequence(ast.NodeVisitor):
         # Understand if the iterator has changed. By construction (currently) all iterators must be
         # in common coming from a single vertex - so if one has been already used, start with that.
         # This will change when we allow things like jet-chaining.
-        already_used_itr = _child_iterator_in_use(v_source)
+        already_used_itr = child_iterator_in_use(v_source, depth)
         if already_used_itr is not None:
             itr_index = already_used_itr
         elif depth == vs_meta.level:
-            itr_index = parent_iterator_index(v_source)
+            itr_index = get_iterator_index(v_source)
         else:
             itr_index = get_g_info(self._g).next_iter_index()
 
@@ -118,7 +118,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         t = expression_transform(function_call)
 
         v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, {node: astIteratorPlaceholder(itr_index)}))
-        self._g.add_edge(v, v_source, info=e_info(True, itr_index))
+        self._g.add_edge(v, v_source, info=e_info(True, get_iterator_index(v_source)))
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         '''Process a python binary operator. We support:
@@ -329,21 +329,3 @@ def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:
     v_list = list(g.vs.select(lambda v: get_v_info(v).node is node))
     assert len(v_list) == 1, f'Internal error: Should be only one node per vertex - found {len(v_list)}'
     return v_list[0]
-
-
-def _child_iterator_in_use(v_source: Vertex) -> Optional[int]:
-    '''Find another dependent of `v_source` and return the iterator in use. Return None if
-    we can't find it.
-
-    Args:
-        v_source (Vertex): The vertex to search for dependent expressions on
-
-    Returns:
-        Optional[int]: None if no dependent vertices were found, otherwise the iterator.
-    '''
-    edges = v_source.in_edges()
-    if len(edges) == 0:
-        return None
-
-    # All edges going out from a vertex must (currently) use the same iterator.
-    return get_e_info(edges[0]).itr_idx

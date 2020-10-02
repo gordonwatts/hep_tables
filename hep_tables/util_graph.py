@@ -1,6 +1,9 @@
+from typing import Iterator, Optional, Tuple, cast
+
+from igraph import Edge, Graph, Vertex  # type: ignore
+
 from hep_tables.graph_info import get_e_info, get_v_info
-from igraph import Graph, Vertex, Edge  # type: ignore
-from typing import Iterator, Tuple
+from hep_tables.util_ast import astIteratorPlaceholder
 
 
 def depth_first_traversal(g: Graph) -> Iterator[Tuple[Vertex]]:
@@ -18,7 +21,7 @@ def depth_first_traversal(g: Graph) -> Iterator[Tuple[Vertex]]:
     '''
     nodes = tuple(g.vs.select(lambda v: v.degree(mode='out') == 0))
     while len(nodes) != 0:
-        yield nodes
+        yield nodes  # type: ignore
         new_nodes = [n.neighbors(mode='in') for n in nodes]
         u = set(n for n_list in new_nodes for n in n_list)
         nodes = tuple(sorted(u, key=lambda v: get_v_info(v).order))
@@ -41,15 +44,70 @@ def find_main_seq_edge(v: Vertex) -> Edge:
     return main_edges[0]
 
 
-def parent_iterator_index(v_source: Vertex) -> int:
-    '''Given a vertex, find its main sequence in, and figure out the iterator number for it.
+def get_iterator_index(v: Vertex) -> int:
+    '''Return a the iterator index a vertex is using.
 
     Args:
-        v_source (Vertex): The vertex which we will look at its input for.
+        v (Vertex): Vertex on which we should determine the iterator index
+
+    Returns:
+        int: The iterator index
+    '''
+    info = get_v_info(v)
+    assert len(info.node_as_dict) == 1, 'Internal error - too many asts in parentless node to understand iterator index'
+    k = list(info.node_as_dict.keys())[0]
+    return cast(astIteratorPlaceholder, info.node_as_dict[k]).iterator_number
+
+
+def parent_iterator_index(v: Vertex) -> int:
+    '''Given a vertex, find its main sequence in, and figure out the iterator number for it.
+
+    It this is a top level vertex, then use the iterator index it is using.
+
+    Args:
+        v (Vertex): The vertex which we will look at its input for.
 
     Returns:
         int: The index that was used.
     '''
-    main_edge = find_main_seq_edge(v_source)
-    i = get_e_info(main_edge)
-    return i.itr_idx
+    if len(v.out_edges()) == 0:
+        return get_iterator_index(v)
+    else:
+        main_edge = find_main_seq_edge(v)
+        i = get_e_info(main_edge)
+        return i.itr_idx
+
+
+def child_iterator_in_use(v: Vertex, level: int) -> Optional[int]:
+    '''Finds another dependent of v, and returns its iterator number.
+
+    1. It must be to the same level
+    1. It must be another already established dependent of v.
+
+    Args:
+        v (Vertex): The vertex to search for dependent expressions on.
+        level (int): The level which the other dependent must be captured
+                     on.
+
+    Returns:
+        Optional[int]: None if no dependent vertices at the same level
+                       were found, otherwise the iterator index.
+    '''
+    other_child_edges = v.in_edges()
+    if len(other_child_edges) == 0:
+        return None
+
+    # Lets can all the edges going out for any with the right level.
+    good_level_vert = [
+        v
+        for v in [get_v_info(e.source_vertex) for e in other_child_edges]
+        if v.level == level
+    ]
+    if len(good_level_vert) == 0:
+        return None
+
+    # All vertices are assumed to be using the same level here.
+    place_holder_dicts = good_level_vert[0].node_as_dict
+    place_holder = list(place_holder_dicts.values())[-1]
+    assert isinstance(place_holder, astIteratorPlaceholder)
+    return place_holder.iterator_number
