@@ -4,7 +4,7 @@ from hep_tables.graph_info import e_info
 
 import pytest
 from hep_tables.util_ast import astIteratorPlaceholder
-from hep_tables.util_graph import child_iterator_in_use, depth_first_traversal, get_iterator_index, parent_iterator_index
+from hep_tables.util_graph import child_iterator_in_use, depth_first_traversal, get_iterator_index, highest_used_order, parent_iterator_index
 from igraph import Graph
 
 from tests.conftest import mock_vinfo
@@ -132,8 +132,36 @@ def test_get_iter_index_one_two(mocker):
         get_iterator_index(v)
 
 
-def test_get_iter_index_one_two(mocker):
+def test_get_iter_index_one_two_same(mocker):
     g = Graph(directed=True)
     v = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(1)}))
 
     assert get_iterator_index(v) == 1
+
+
+def test_highest_order_none(mocker):
+    g = Graph(directed=True)
+    v = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(1)}, order=1))
+
+    assert highest_used_order(v) == -1
+
+
+def test_highest_order_1(mocker):
+    g = Graph(directed=True)
+    v_p = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(1)}))
+    v_c = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(1)}, order=2))
+    g.add_edge(v_c, v_p)
+
+    assert highest_used_order(v_p) == 2
+
+
+def test_highest_order_2(mocker):
+    g = Graph(directed=True)
+    v_p = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(1)}))
+    v_c1 = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(1)}, order=2))
+    g.add_edge(v_c1, v_p)
+
+    v_c2 = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(1)}, order=5))
+    g.add_edge(v_c2, v_p)
+
+    assert highest_used_order(v_p) == 5

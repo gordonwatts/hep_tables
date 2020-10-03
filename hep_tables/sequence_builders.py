@@ -1,5 +1,5 @@
 import ast
-from hep_tables.util_graph import child_iterator_in_use, get_iterator_index
+from hep_tables.util_graph import child_iterator_in_use, get_iterator_index, highest_used_order
 from hep_tables.util_ast import astIteratorPlaceholder
 from typing import Iterable, Optional, Type, Union, cast
 
@@ -106,8 +106,10 @@ class _translate_to_sequence(ast.NodeVisitor):
         # in common coming from a single vertex - so if one has been already used, start with that.
         # This will change when we allow things like jet-chaining.
         already_used_itr = child_iterator_in_use(v_source, depth)
+        order = 0
         if already_used_itr is not None:
             itr_index = already_used_itr
+            order = highest_used_order(v_source) + 1
         elif depth == vs_meta.level:
             itr_index = get_iterator_index(v_source)
         else:
@@ -117,7 +119,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         function_call = ast.Call(func=ast.Attribute(value=node.value, attr=node.attr), args=[], keywords=[])
         t = expression_transform(function_call)
 
-        v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, {node: astIteratorPlaceholder(itr_index)}))
+        v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, {node: astIteratorPlaceholder(itr_index)}, order=order))
         self._g.add_edge(v, v_source, info=e_info(True, get_iterator_index(v_source)))
 
     def visit_BinOp(self, node: ast.BinOp) -> None:

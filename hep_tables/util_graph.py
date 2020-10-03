@@ -116,3 +116,21 @@ def child_iterator_in_use(v: Vertex, level: int) -> Optional[int]:
     place_holder = list(place_holder_dicts.values())[-1]
     assert isinstance(place_holder, astIteratorPlaceholder)
     return place_holder.iterator_number
+
+
+def highest_used_order(v: Vertex) -> int:
+    '''Return the highest order number on a child of `v`.
+
+    Args:
+        v (Vertex): Vertex to scan all children of.
+
+    Returns:
+        int: The order number of the highest order child. Returns
+             -1 if there are no children.
+    '''
+    child_edges = v.in_edges()
+    if len(child_edges) == 0:
+        return -1
+    child_vertices = (e.source_vertex for e in child_edges)
+    child_order = (get_v_info(v).order for v in child_vertices)
+    return max(child_order)

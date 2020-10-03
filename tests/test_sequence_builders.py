@@ -154,6 +154,7 @@ def test_attribute_known_list(mocker):
     assert attr_vtx.v_type == Iterable[float]
     assert attr_vtx.node is pt
     assert attr_vtx.level == 1
+    assert attr_vtx.order == 0
     seq = attr_vtx.sequence
     assert isinstance(seq, expression_transform)
 
@@ -335,6 +336,7 @@ def test_attribute_second_to_the_party(mocker):
     assert all(get_e_info(e).itr_idx == 1 for e in edges)
     v = list(g.vs())[-1]
     v_info_dict = get_v_info(v).node_as_dict
+    assert get_v_info(v).order == 1
     k = list(v_info_dict.keys())[0]
     assert cast(astIteratorPlaceholder, v_info_dict[k]).iterator_number == 3
 
