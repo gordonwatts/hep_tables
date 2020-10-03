@@ -29,7 +29,7 @@ def test_level_multiple_skip(mocker):
 
 
 def test_downlevel_one(mocker, mock_root_sequence_transform, mock_qt):
-    'Make sure a level 2 node is down-leveled correctly to level 1'
+    'Make sure a level 2 node is down-leveled correctly to level 1, same itr index'
     mine, a1, root_seq = mock_root_sequence_transform
     g = Graph(directed=True)
     level_0 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=root_seq, level=1))
@@ -54,6 +54,33 @@ def test_downlevel_one(mocker, mock_root_sequence_transform, mock_qt):
     assert isinstance(s, sequence_downlevel)
     assert s.transform is seq_met
     assert s.sequence_ast is a1
+    assert s.iterator_idx == 1
+
+
+def test_downlevel_different_iterators(mocker, mock_root_sequence_transform, mock_qt):
+    'Make sure a level 2 node is down-leveled correctly to level 1'
+    mine, a1, root_seq = mock_root_sequence_transform
+    g = Graph(directed=True)
+    level_0 = g.add_vertex(info=mock_vinfo(mocker, node={a1: astIteratorPlaceholder(1)},
+                                           seq=root_seq, level=1))
+
+    a2_1 = ast.Constant(10)
+    seq_met = mocker.MagicMock(spec=expression_transform)
+    level_1_1 = g.add_vertex(info=mock_vinfo(mocker, node={a2_1: astIteratorPlaceholder(2)},
+                             seq=seq_met, order=0, level=2))
+    g.add_edge(level_1_1, level_0, info=e_info(True, 1))
+
+    reduce_level(g, 2, mock_qt)
+
+    meta = get_v_info(level_1_1)
+
+    a_ref = meta.node_as_dict[a2_1]
+    assert isinstance(a_ref, astIteratorPlaceholder)
+    assert len(a_ref.levels) == 1
+    assert a_ref.levels[0] is None
+
+    s = meta.sequence
+    assert isinstance(s, sequence_downlevel)
     assert s.iterator_idx == 1
 
 
@@ -160,17 +187,21 @@ def test_reduce_vertices_separate_steps(mocker, mock_qt):
 
 
 def test_reduce_vertices_simple_dependency(mocker, mock_qt):
-    'Three vertices, get combined, and check meta-data'
+    '''Three vertices, get combined, all on same iterator at same level. This is
+    similar to Jet object -> jet.p1 + jet.p2 - implied loop, same iterator'''
     g = Graph(directed=True)
     a_1 = ast.Constant(1)
-    level_1 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_1, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    level_1 = g.add_vertex(info=mock_vinfo(mocker, level=2, node={a_1: astIteratorPlaceholder(1)},
+                           order=0, seq=mocker.MagicMock(spec=expression_transform)))
 
     a_2 = ast.Constant(1)
-    level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_2, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node={a_2: astIteratorPlaceholder(1)},
+                           order=0, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(level_2, level_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
-    level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_3, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node={a_3: astIteratorPlaceholder(1)},
+                           order=1, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(level_3, level_1, info=e_info(True, 1))
 
     reduce_tuple_vertices(g, 2, mock_qt)
@@ -186,6 +217,7 @@ def test_reduce_vertices_simple_dependency(mocker, mock_qt):
 
     edge_info = get_e_info(v_2.out_edges()[0])
     assert edge_info.main
+    assert edge_info.itr_idx == 1
 
     v_1_md = get_v_info(v_1)
     v_2_md = get_v_info(v_2)
@@ -208,8 +240,44 @@ def test_reduce_vertices_simple_dependency(mocker, mock_qt):
     assert v_2_md.order == 0
 
 
+def test_reduce_vertices_itr_idx_check(mocker, mock_qt):
+    '''Three vertices, get combined, all on same iterator at same level. This is
+    similar to Jet object -> jet.p1 + jet.p2 - implied loop, same iterator, use
+    a different iterator number'''
+    g = Graph(directed=True)
+    a_1 = ast.Constant(1)
+    level_1 = g.add_vertex(info=mock_vinfo(mocker, level=2, node={a_1: astIteratorPlaceholder(2)},
+                           order=0, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a_2 = ast.Constant(1)
+    level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node={a_2: astIteratorPlaceholder(2)},
+                           order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    g.add_edge(level_2, level_1, info=e_info(True, 2))
+
+    a_3 = ast.Constant(1)
+    level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node={a_3: astIteratorPlaceholder(2)},
+                           order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    g.add_edge(level_3, level_1, info=e_info(True, 2))
+
+    reduce_tuple_vertices(g, 2, mock_qt)
+
+    assert len(g.vs()) == 2  # Number of vertices
+    assert len(g.es()) == 1  # Number of edges
+
+    v_1, v_2 = list(g.vs())
+    assert len(v_1.neighbors(mode='out')) == 0
+    assert len(v_1.neighbors(mode='in')) == 1
+    assert len(v_2.neighbors(mode='out')) == 1
+    assert len(v_2.neighbors(mode='in')) == 0
+
+    edge_info = get_e_info(v_2.out_edges()[0])
+    assert edge_info.main
+    assert edge_info.itr_idx == 2
+
+
 def test_reduce_tuple_downstream_edges_updated(mocker, mock_qt):
-    'Two vertices get combined. Make sure dependent that combines has edges updated correctly'
+    '''Two vertices get combined. Make sure dependent that combines has edges updated correctly.
+    This is like having jets => jets.pt1, jets.pt2, func(jets.pt1 (array), jets.pt2 (array))'''
     g = Graph(directed=True)
     a_1 = ast.Num(n=1)
     level_1 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_1, order=0, seq=mocker.MagicMock(spec=expression_transform)))
@@ -224,8 +292,8 @@ def test_reduce_tuple_downstream_edges_updated(mocker, mock_qt):
 
     a_4 = ast.Num(n=4)
     level_4 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_4, order=1, seq=mocker.MagicMock(spec=expression_transform)))
-    g.add_edge(level_4, level_3, info=e_info(True, 1))
-    g.add_edge(level_4, level_2, info=e_info(True, 1))
+    g.add_edge(level_4, level_3, info=e_info(True, 2))
+    g.add_edge(level_4, level_2, info=e_info(True, 2))
 
     reduce_tuple_vertices(g, 2, mock_qt)
 

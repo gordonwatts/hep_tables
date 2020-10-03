@@ -1,5 +1,5 @@
 import ast
-from hep_tables.util_graph import child_iterator_in_use, get_iterator_index, parent_iterator_index
+from hep_tables.util_graph import child_iterator_in_use, get_iterator_index
 from hep_tables.util_ast import astIteratorPlaceholder
 from typing import Iterable, Optional, Type, Union, cast
 
@@ -170,8 +170,8 @@ class _translate_to_sequence(ast.NodeVisitor):
         s = expression_transform(l_func_body)
 
         # Figure out if we are using the same index or not
-        left_index = parent_iterator_index(left)
-        right_index = parent_iterator_index(right)
+        left_index = get_iterator_index(left)
+        right_index = get_iterator_index(right)
 
         # Create the vertex and connect to a and b via edges
         # We make, arbitrarily, the left sequence the main sequence (left is better!)
@@ -313,13 +313,13 @@ class _translate_to_sequence(ast.NodeVisitor):
         seq = expression_transform(transform_body)
         for i in range(level):
             return_type = Iterable[return_type]  # type: ignore
-        v_i = v_info(level, seq, return_type, {node: astIteratorPlaceholder(parent_iterator_index(arg_vtx[0]))})
+        v_i = v_info(level, seq, return_type, {node: astIteratorPlaceholder(get_iterator_index(arg_vtx[0]))})
         new_v = self._g.add_vertex(info=v_i)
 
         main_seq = True
         for v in arg_vtx:
             assert get_v_info(v).level == level, 'TODO: Make sure this test case is covered for edge index'
-            self._g.add_edge(new_v, v, info=e_info(main_seq, parent_iterator_index(v)))
+            self._g.add_edge(new_v, v, info=e_info(main_seq, get_iterator_index(v)))
             main_seq = False
 
 

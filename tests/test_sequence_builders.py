@@ -397,6 +397,28 @@ def test_binary_op(operator, sym, mocker):
     assert all(get_e_info(e).itr_idx == 1 for e in edges)
 
 
+def test_binary_op_with_parent(mocker):
+    'Get iterator index right when we have a deep tree'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=ast.Add())
+
+    g = Graph(directed=True)
+    v_parent = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {ast.Constant(10): astIteratorPlaceholder(1)}))
+    v1 = g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], {a: astIteratorPlaceholder(2)}))
+    v2 = g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], {b: astIteratorPlaceholder(2)}))
+    g.add_edge(v1, v_parent, info=e_info(True, 1))
+    g.add_edge(v2, v_parent, info=e_info(True, 1))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = (2, (float, float))
+
+    ast_to_graph(op, g, t_mock)
+
+    edges = list(g.vs())[-1].out_edges()
+    assert all(get_e_info(e).itr_idx == 2 for e in edges)
+
+
 def test_binary_op_cross(mocker):
     'Test the binary operators'
     a = ast.Name('a')

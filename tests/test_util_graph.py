@@ -130,3 +130,10 @@ def test_get_iter_index_one_two(mocker):
 
     with pytest.raises(Exception):
         get_iterator_index(v)
+
+
+def test_get_iter_index_one_two(mocker):
+    g = Graph(directed=True)
+    v = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1), ast.Constant(10): astIteratorPlaceholder(1)}))
+
+    assert get_iterator_index(v) == 1

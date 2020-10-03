@@ -108,15 +108,12 @@ class set_holder_level_index(ast.NodeVisitor):
 
 
 class add_level_to_holder(CloningNodeTransformer):
-    def __init__(self, itr_id: int):
+    def __init__(self):
         super().__init__()
-        self._id = itr_id
 
     def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> astIteratorPlaceholder:
-        if node.iterator_number == self._id:
-            new_level = node.next_level()
-            return new_level
-        return node
+        new_level = node.next_level()
+        return new_level
 
 
 def reduce_holder_by_level(itr_id: int, d: Dict[ast.AST, ast.AST]) -> Dict[ast.AST, ast.AST]:

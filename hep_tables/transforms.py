@@ -121,7 +121,7 @@ class sequence_downlevel(sequence_predicate_base):
         Args:
             transform (sequence_predicate_base): The transform to operate on the array of array elements in the stream.
             var_name (str): The name of the variable we will use in our Select statement.
-            itr_id (int): The iterator index we are looping over
+            itr_id (int): The iterator index we are looping over.
             main_seq_ast (ast.AST): The AST that represents the main sequence we are iterating over.
 
         '''

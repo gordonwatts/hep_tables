@@ -9,7 +9,7 @@ from hep_tables.graph_info import (
     copy_v_info, e_info, get_e_info, get_v_info, v_info)
 from hep_tables.transforms import expression_transform, expression_tuple, sequence_downlevel
 from hep_tables.util_ast import add_level_to_holder, set_holder_level_index
-from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge
+from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, parent_iterator_index
 from hep_tables.utils import QueryVarTracker
 
 
@@ -60,9 +60,9 @@ def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
         main_seq_edge = find_main_seq_edge(v)
         main_seq_asts = get_v_info(main_seq_edge.target_vertex).node_as_dict
         main_seq_ast = list(main_seq_asts.keys())[0]
-        main_seq_iterator_idx = get_e_info(main_seq_edge).itr_idx
-        new_seq = sequence_downlevel(vs_meta.sequence, qv.new_var_name(), main_seq_iterator_idx, main_seq_ast)
-        new_node_dict = {k: add_level_to_holder(main_seq_iterator_idx).visit(v) for k, v in vs_meta.node_as_dict.items()}
+        seq_itr_idx = parent_iterator_index(v)
+        new_seq = sequence_downlevel(vs_meta.sequence, qv.new_var_name(), seq_itr_idx, main_seq_ast)
+        new_node_dict = {k: add_level_to_holder().visit(v) for k, v in vs_meta.node_as_dict.items()}
         v['info'] = copy_v_info(vs_meta, new_sequence=new_seq, new_level=level - 1, new_node=new_node_dict)
 
 
@@ -75,7 +75,7 @@ def partition_by_parents(vs: List[Vertex]) -> List[List[Vertex]]:
     Returns:
         List[List[Vertex]]: [description]
     '''
-    by_parents = {v: tuple(set(p for p in v.neighbors(mode='out'))) for v in vs}
+    by_parents: Dict[List[Vertex], Any] = {v: tuple(set(p for p in v.neighbors(mode='out'))) for v in vs}
     organized_vertices: Dict[Tuple[Vertex], List[Vertex]] = defaultdict(list)
     for k, v in by_parents.items():
         organized_vertices[v].append(k)
@@ -122,7 +122,7 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
                     dependend_on_us_edges = v.in_edges()
                     for e in dependend_on_us_edges:
                         v_dep = e.source_vertex
-                        _update_edge(v_dep, new_vertex, get_e_info(e).main)
+                        _update_edge(v_dep, new_vertex, get_e_info(e))
                     g.delete_edges(dependend_on_us_edges)
 
                     # Update edges to vertices we depend on. One trick, make sure we don't over do
@@ -130,8 +130,9 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
                     dependent_edges = v.out_edges()
                     for e in dependent_edges:
                         v_dep = e.target_vertex
-                        is_main = get_e_info(e).main and not found_main
-                        _update_edge(new_vertex, v_dep, is_main)
+                        info = get_e_info(e)
+                        is_main = info.main and not found_main
+                        _update_edge(new_vertex, v_dep, e_info(is_main, info.itr_idx))
                         found_main = found_main or is_main
                     g.delete_edges(dependent_edges)
 
@@ -192,7 +193,7 @@ def _find_edge(v1: Vertex, v2: Vertex) -> Optional[Edge]:
     return None
 
 
-def _update_edge(source_vertex: Vertex, target_vertex: Vertex, e_main: bool):
+def _update_edge(source_vertex: Vertex, target_vertex: Vertex, info: e_info):
     '''Make sure there is an edge between `source` and `vertex`. Further, mark it as
     the main vertex if hasn't been already.
 
@@ -207,9 +208,10 @@ def _update_edge(source_vertex: Vertex, target_vertex: Vertex, e_main: bool):
     if old_edge is None:
         # Create a vertex
         # TODO: Make sure the proper iterator number is created here
-        source_vertex.graph.add_edge(source_vertex, target_vertex, info=e_info(e_main, 1))
+        source_vertex.graph.add_edge(source_vertex, target_vertex, info=e_info(info.main, info.itr_idx))
     else:
         # See if we need ot do the update.
-        if e_main:
-            if not old_edge['info'].main:
-                old_edge['info'] = e_info(e_main, get_e_info(old_edge).itr_idx)
+        old_info = get_e_info(old_edge)
+        # TODO: what about two indices? Ok to ignore? See test test_two_iterators_combined
+        if not old_info.main and (old_info.main != info.main):
+            old_edge['info'] = e_info(True, old_info.itr_idx)

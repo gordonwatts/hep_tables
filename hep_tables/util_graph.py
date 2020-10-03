@@ -45,7 +45,8 @@ def find_main_seq_edge(v: Vertex) -> Edge:
 
 
 def get_iterator_index(v: Vertex) -> int:
-    '''Return a the iterator index a vertex is using.
+    '''Return a the iterator index this vertex is going to "generate" - that is, the iterator
+    that this vertexes children will be using (output? vertex iterator).
 
     Args:
         v (Vertex): Vertex on which we should determine the iterator index
@@ -54,13 +55,14 @@ def get_iterator_index(v: Vertex) -> int:
         int: The iterator index
     '''
     info = get_v_info(v)
-    assert len(info.node_as_dict) == 1, 'Internal error - too many asts in parentless node to understand iterator index'
-    k = list(info.node_as_dict.keys())[0]
-    return cast(astIteratorPlaceholder, info.node_as_dict[k]).iterator_number
+    indices = set((cast(astIteratorPlaceholder, val).iterator_number for _, val in info.node_as_dict.items()))
+    assert len(indices) == 1, 'Internal error - too many different iterator indexes - do not know how to process'
+    return list(indices)[0]
 
 
 def parent_iterator_index(v: Vertex) -> int:
     '''Given a vertex, find its main sequence in, and figure out the iterator number for it.
+    This is the iterator that the vertex `v` will be iterating over.
 
     It this is a top level vertex, then use the iterator index it is using.
 
@@ -69,6 +71,9 @@ def parent_iterator_index(v: Vertex) -> int:
 
     Returns:
         int: The index that was used.
+
+    Note:
+    TODO: Is this getting used by anyone any longer?
     '''
     if len(v.out_edges()) == 0:
         return get_iterator_index(v)
