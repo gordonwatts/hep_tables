@@ -97,6 +97,12 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
         level_group = [v for v in grouping if get_v_info(v).level == level]
         for p_group in partition_by_parents(level_group):
             if len(p_group) > 1:
+                # Check we have unique orders. Not strictly required in order
+                # do work, but it does assure repeatability, and that things are
+                # the same in debug mode running and release mode (seriously).
+                orders = set(get_v_info(v).order for v in p_group)
+                assert len(orders) == len(p_group), 'duplicate order numbers'
+
                 # This is a bit messy because we must take all in-comming and out-going
                 # connections and re-hook them up. That plus the fact that in `igraph` vertex
                 # and edge pointers are rendered invalid if you delete something from the
@@ -139,7 +145,8 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
                     vertices_to_delete.append(v)
 
                 new_seq = expression_tuple(transforms)
-                new_info = v_info(level=level, seq=new_seq, v_type=Any, node=ast_list, order=0)
+                new_order = max(get_v_info(p).order for p in p_group)
+                new_info = v_info(level=level, seq=new_seq, v_type=Any, node=ast_list, order=new_order)
                 new_vertex['info'] = new_info
 
     # Last thing we do: delete the vertices we no longer need here.

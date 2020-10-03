@@ -237,7 +237,7 @@ def test_reduce_vertices_simple_dependency(mocker, mock_qt):
     assert len(seq.transforms) == 2
 
     assert v_1_md.order == 0
-    assert v_2_md.order == 0
+    assert v_2_md.order == 1
 
 
 def test_reduce_vertices_simple_change_iterator_index(mocker, mock_qt):
@@ -467,21 +467,21 @@ def test_two_parents_tuple_combined(mocker, mock_qt):
     g.add_edge(node_2, node_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
-    node_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=1, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_3, node_1, info=e_info(True, 1))
 
     a_4 = ast.Constant(1)
-    node_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, order=2, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_4, node_2, info=e_info(False, 1))
     g.add_edge(node_4, node_3, info=e_info(True, 1))
 
     a_5 = ast.Constant(1)
-    node_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=3, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_5, node_2, info=e_info(False, 1))
     g.add_edge(node_5, node_3, info=e_info(True, 1))
 
     a_6 = ast.Constant(6)
-    node_6 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_6, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_6 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_6, order=4, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_6, node_4, info=e_info(True, 1))
     g.add_edge(node_6, node_5, info=e_info(False, 1))
 
@@ -526,25 +526,25 @@ def test_two_parents_tuple_combined_reorder(mocker, mock_qt):
     node_1 = g.add_vertex(info=mock_vinfo(mocker, level=0, node=a_1, order=0, seq=mocker.MagicMock(spec=expression_transform)))
 
     a_2 = ast.Constant(1)
-    node_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_2, order=1, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_2, node_1, info=e_info(True, 1))
 
     a_3 = ast.Constant(1)
-    node_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_3, order=2, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_3, node_1, info=e_info(True, 1))
 
     a_4 = ast.Constant(1)
-    node_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_4 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_4, order=3, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_4, node_2, info=e_info(True, 1))
     g.add_edge(node_4, node_3, info=e_info(False, 1))
 
     a_5 = ast.Constant(1)
-    node_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a_5, order=4, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_5, node_2, info=e_info(True, 1))
     g.add_edge(node_5, node_3, info=e_info(False, 1))
 
     a_6 = ast.Constant(6)
-    node_6 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_6, order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    node_6 = g.add_vertex(info=mock_vinfo(mocker, level=1, node=a_6, order=5, seq=mocker.MagicMock(spec=expression_transform)))
     g.add_edge(node_6, node_4, info=e_info(True, 1))
     g.add_edge(node_6, node_5, info=e_info(False, 1))
 
@@ -773,13 +773,13 @@ def test_two_iterators_combined(mocker, mock_root_sequence_transform, mock_qt):
     mine, a1, root_seq = mock_root_sequence_transform
     r = g.add_vertex(info=mock_vinfo(mocker, level=0, seq=root_seq, node=a1))
 
-    n1 = g.add_vertex(info=mock_vinfo(mocker, level=1, seq=mocker.MagicMock(spec=expression_transform), node=ast.Name('a')))
-    n2 = g.add_vertex(info=mock_vinfo(mocker, level=1, seq=mocker.MagicMock(spec=expression_transform), node=ast.Name('b')))
+    n1 = g.add_vertex(info=mock_vinfo(mocker, level=1, order=1, seq=mocker.MagicMock(spec=expression_transform), node=ast.Name('a')))
+    n2 = g.add_vertex(info=mock_vinfo(mocker, level=1, order=2, seq=mocker.MagicMock(spec=expression_transform), node=ast.Name('b')))
     g.add_edge(n1, r, info=e_info(True, 1))
     g.add_edge(n2, r, info=e_info(True, 2))
 
     a_adder = ast.Name('adder')
-    n3 = g.add_vertex(info=mock_vinfo(mocker, level=1, seq=mocker.MagicMock(spec=expression_transform), node=a_adder))
+    n3 = g.add_vertex(info=mock_vinfo(mocker, level=1, order=3, seq=mocker.MagicMock(spec=expression_transform), node=a_adder))
     g.add_edge(n3, n1, info=e_info(True, 1))
     g.add_edge(n3, n2, info=e_info(False, 2))
 
