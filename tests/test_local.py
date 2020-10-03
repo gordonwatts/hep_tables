@@ -84,7 +84,25 @@ def test_collect_sum_jet(servicex_ds):
                                ) == extract_selection(servicex_ds)
 
 
-def test_double_map(servicex_ds):
+def test_double_map_add(servicex_ds):
+    'Two level test going from xaod_table to a qastle query: integration test'
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f, table_type_info=AnEvent)
+    jets = df.jets
+    tracks = df.tracks
+
+    dr_per_jet = jets.map(lambda j: tracks.map(lambda t: j.pt + t.pt))
+
+    _new_make_local(dr_per_jet)
+
+    assert MatchQastleSequence(lambda f: f
+                               .Select("lambda e1: (e1.jets(), e1.tracks())")
+                               .Select("lambda e2: (e2[0].Select(lambda j: j.pt()), e2[1].Select(lambda t: t.pt()))")
+                               .Select("lambda e4: e4[0].Select(lambda e5: e4[1].Select(lambda e6: e5 + e6))")
+                               ) == extract_selection(servicex_ds)
+
+
+def test_double_map_func(servicex_ds):
     'Two level test going from xaod_table to a qastle query: integration test'
     f = ServiceXDatasetSource(servicex_ds)
     df = xaod_table(f, table_type_info=AnEvent)
