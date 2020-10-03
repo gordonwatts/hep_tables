@@ -8,6 +8,13 @@ from hep_tables.local import _new_make_local
 
 from .conftest import MatchQastleSequence, extract_selection
 
+# NOTE:
+# These tests are integration tests. Add to them, no problem. If you find a bug,
+# however, create a unit test in another test file to make sure that bug
+# does not occur. Many integration tests are too complex to really isolate
+# a bug or behavior.
+#
+
 
 class Jet:
     def pt(self) -> float:
