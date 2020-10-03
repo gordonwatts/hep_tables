@@ -240,9 +240,49 @@ def test_reduce_vertices_simple_dependency(mocker, mock_qt):
     assert v_2_md.order == 0
 
 
+def test_reduce_vertices_simple_change_iterator_index(mocker, mock_qt):
+    '''Check that the `node_as_dict` gets properly updated with levels when
+    we do down a level when the iterator number changes. This is making sure that
+    the right iterator gets updated.
+
+    Iterable[Jets] -> jet.pt1 + jet.pt2 at level + 1.
+    '''
+    g = Graph(directed=True)
+    a_1 = ast.Constant(1)
+    level_1 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a_1: astIteratorPlaceholder(1)},
+                           order=0, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a_2 = ast.Constant(1)
+    level_2 = g.add_vertex(info=mock_vinfo(mocker, level=2, node={a_2: astIteratorPlaceholder(2)},
+                           order=0, seq=mocker.MagicMock(spec=expression_transform)))
+    g.add_edge(level_2, level_1, info=e_info(True, 1))
+
+    a_3 = ast.Constant(1)
+    level_3 = g.add_vertex(info=mock_vinfo(mocker, level=2, node={a_3: astIteratorPlaceholder(2)},
+                           order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    g.add_edge(level_3, level_1, info=e_info(True, 1))
+
+    reduce_tuple_vertices(g, 2, mock_qt)
+
+    v_1, v_2 = list(g.vs())
+
+    edge_info = get_e_info(v_2.out_edges()[0])
+    assert edge_info.main
+    assert edge_info.itr_idx == 1
+
+    v_2_md = get_v_info(v_2)
+    assert v_2_md.level == 2
+
+    assert len(v_2_md.node_as_dict) == 2
+    assert isinstance(v_2_md.node_as_dict[a_2], astIteratorPlaceholder)
+    assert v_2_md.node_as_dict[a_2].new_level == 0  # type: ignore
+    assert isinstance(v_2_md.node_as_dict[a_3], astIteratorPlaceholder)
+    assert v_2_md.node_as_dict[a_3].new_level == 1  # type: ignore
+
+
 def test_reduce_vertices_itr_idx_check(mocker, mock_qt):
     '''Three vertices, get combined, all on same iterator at same level. This is
-    similar to Jet object -> jet.p1 + jet.p2 - implied loop, same iterator, use
+    similar to Jet object -> jet.p1 + jet.p2 - implied loop, use
     a different iterator number'''
     g = Graph(directed=True)
     a_1 = ast.Constant(1)

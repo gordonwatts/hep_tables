@@ -9,7 +9,7 @@ from hep_tables.graph_info import (
     copy_v_info, e_info, get_e_info, get_v_info, v_info)
 from hep_tables.transforms import expression_transform, expression_tuple, sequence_downlevel
 from hep_tables.util_ast import add_level_to_holder, set_holder_level_index
-from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, parent_iterator_index
+from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, get_iterator_index, parent_iterator_index
 from hep_tables.utils import QueryVarTracker
 
 
@@ -109,13 +109,13 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
                 ast_list = {}
                 for index, v in enumerate(sorted(p_group, key=lambda k: get_v_info(k).order)):
                     # Get the main sequence first
-                    main_edge = find_main_seq_edge(v)
+                    out_itr_index = get_iterator_index(v)
 
                     # Track this transform in the tuple
                     vs_meta = get_v_info(v)
                     transforms.append(vs_meta.sequence)
                     for key, val in vs_meta.node_as_dict.items():
-                        set_holder_level_index(get_e_info(main_edge).itr_idx, index).visit(val)
+                        set_holder_level_index(out_itr_index, index).visit(val)
                         ast_list[key] = val
 
                     # Update edges to vertices that depend on us
