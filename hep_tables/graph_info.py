@@ -80,10 +80,9 @@ class v_info:
 class e_info:
     '''Metadata attached with a vertex Edge.
     '''
-    def __init__(self, main_seq: bool, iterator_index: int, depth_mark: bool = False):
+    def __init__(self, main_seq: bool, iterator_index: int):
         self._main = main_seq
         self._iterators = iterator_index
-        self._depth_mark = depth_mark
 
     @property
     def main(self) -> bool:
@@ -102,14 +101,6 @@ class e_info:
             int: The iterator index
         '''
         return self._iterators
-
-    @property
-    def depth_mark(self) -> bool:
-        return self._depth_mark
-
-    @depth_mark.setter
-    def depth_mark(self, v: bool):
-        self._depth_mark = v
 
 
 class g_info:
@@ -160,15 +151,24 @@ def get_v_info(v: Vertex) -> v_info:
 def copy_v_info(old: v_info,
                 new_level: Optional[int] = None,
                 new_sequence: Optional[expression_predicate_base] = None,
-                new_node: Dict[ast.AST, ast.AST] = None):
+                new_node: Dict[ast.AST, ast.AST] = None,
+                new_order: Optional[int] = None):
     new_level = old.level if new_level is None else new_level
     new_seq = old.sequence if new_sequence is None else new_sequence
     new_node = old.node_as_dict if new_node is None else new_node
+    new_order = old.order if new_order is None else new_order
 
-    new_order = old.order
     new_type = old.v_type
 
     return v_info(new_level, new_seq, new_type, new_node, new_order)
+
+
+def copy_e_info(old: e_info,
+                new_itr_idx: Optional[int] = None):
+    new_main_seq = old.main
+    new_itr_idx = new_itr_idx if new_itr_idx is not None else old.itr_idx
+
+    return e_info(new_main_seq, new_itr_idx)
 
 
 def get_e_info(e: Edge) -> e_info:
