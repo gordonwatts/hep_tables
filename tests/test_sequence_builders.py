@@ -454,6 +454,25 @@ def test_binary_op_cross(mocker):
     assert any(get_e_info(e).itr_idx == 2 for e in edges)
 
 
+def test_binary_op_order_fixup(mocker):
+    'Test the binary operators'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=ast.Add())
+
+    g = Graph(directed=True)
+    v1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {a: astIteratorPlaceholder(1)}, order=0))
+    v2 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(2)}, order=0))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+
+    ast_to_graph(op, g, t_mock)
+
+    o = set([get_v_info(v1).order, get_v_info(v2).order])
+    assert len(o) == 2
+
+
 def test_binary_two_levels_down(mocker):
     'Test binary operator: Iterable[Iterable[float]] + Iterable[Iterable[float]]'
     a = ast.Num('a')

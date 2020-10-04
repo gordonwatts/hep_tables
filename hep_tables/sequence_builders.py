@@ -8,7 +8,7 @@ from dataframe_expressions.render_dataframe import render_callable, render_conte
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
-from hep_tables.graph_info import e_info, g_info, get_g_info, get_v_info, v_info
+from hep_tables.graph_info import copy_v_info, e_info, g_info, get_g_info, get_v_info, v_info
 from hep_tables.hep_table import xaod_table
 from hep_tables.transforms import expression_transform, root_sequence_transform
 from hep_tables.type_info import type_inspector
@@ -174,6 +174,10 @@ class _translate_to_sequence(ast.NodeVisitor):
         # Figure out if we are using the same index or not
         left_index = get_iterator_index(left)
         right_index = get_iterator_index(right)
+
+        # Fix up the source order.
+        if left_meta.order == right_meta.order:
+            right['info'] = copy_v_info(right_meta, new_order=right_meta.order+1)
 
         # Create the vertex and connect to a and b via edges
         # We make, arbitrarily, the left sequence the main sequence (left is better!)
