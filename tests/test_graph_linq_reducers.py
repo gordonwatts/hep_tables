@@ -619,8 +619,12 @@ def test_two_iterators_replacement(mocker, mock_qt):
 
     assert MatchAST("astIteratorPlaceholder(1, [1])") == get_v_info(node3).node_as_dict[a3]
 
-    # However, the sequence should have changed into some thing that is a second derivation.
+    # The new sequence should forward the render, and not touch the
+    # iterator.
     new_seq4 = get_v_info(node4).sequence
+    assert isinstance(new_seq4, sequence_downlevel)
+    assert new_seq4.iterator_idx == -1
+    # However, the sequence should have changed into some thing that is a second derivation.
     assert MatchAST("Select(a3, lambda e1000: a2 + e1000)", ast_name_dict) == new_seq4.render_ast({})
     seq4.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000')}))
 

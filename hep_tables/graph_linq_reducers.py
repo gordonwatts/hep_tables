@@ -190,7 +190,7 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
                 var_name = qt.new_var_name()
                 new_expr = seq.render_ast({parent_asts[0]: ast.Name(id=var_name)})
 
-                seq = sequence_downlevel(expression_transform(new_expr), var_name, main_iterator_index, parent_asts[0])
+                seq = sequence_downlevel(expression_transform(new_expr), var_name, -1, parent_asts[0])
 
                 # Fix up all edges to have the proper iterator, and the parent ast's.
                 for e in itr_edges:
