@@ -78,16 +78,16 @@ class astIteratorPlaceholder(ast.AST):
 
 
 class replace_holder(CloningNodeTransformer):
-    def __init__(self, itr_id: int, v_name: Union[str, ast.AST]):
+    def __init__(self, itr_id: Union[int, List[int]], v_name: Union[str, ast.AST]):
         super().__init__()
-        self._id = itr_id
+        self._id = [itr_id] if isinstance(itr_id, int) else itr_id
         if isinstance(v_name, str):
             self._v = ast.Name(id=v_name)
         else:
             self._v = v_name
 
     def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> ast.AST:
-        if node.iterator_number == self._id:
+        if node.iterator_number in self._id:
             if len(node.levels) == 0 or node.levels[-1] is None:
                 return self._v
             else:

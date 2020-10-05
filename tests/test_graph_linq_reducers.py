@@ -54,7 +54,7 @@ def test_downlevel_one(mocker, mock_root_sequence_transform, mock_qt):
     assert isinstance(s, sequence_downlevel)
     assert s.transform is seq_met
     assert s.sequence_ast is a1
-    assert s.iterator_idx == 1
+    assert s.iterator_idx == [1]
 
 
 def test_downlevel_different_iterators(mocker, mock_root_sequence_transform, mock_qt):
@@ -81,7 +81,7 @@ def test_downlevel_different_iterators(mocker, mock_root_sequence_transform, moc
 
     s = meta.sequence
     assert isinstance(s, sequence_downlevel)
-    assert s.iterator_idx == 1
+    assert s.iterator_idx == [1]
 
 
 def test_main_seq_seen_on_2node_reduction(mocker, mock_qt):
@@ -623,7 +623,7 @@ def test_two_iterators_replacement(mocker, mock_qt):
     # iterator.
     new_seq4 = get_v_info(node4).sequence
     assert isinstance(new_seq4, sequence_downlevel)
-    assert new_seq4.iterator_idx == -1
+    assert new_seq4.iterator_idx == []
     # However, the sequence should have changed into some thing that is a second derivation.
     assert MatchAST("Select(a3, lambda e1000: a2 + e1000)", ast_name_dict) == new_seq4.render_ast({})
     seq4.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000')}))

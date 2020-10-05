@@ -146,6 +146,13 @@ def test_replace_holder_with_levels():
     assert MatchAST("dude[1]") == new_a
 
 
+def test_replace_2_holders_with_levels():
+    a = astIteratorPlaceholder(1, [0, 1])
+    b = astIteratorPlaceholder(2, [2, 3])
+    new_a = replace_holder([1, 2], 'dude').visit(ast.BinOp(left=a, right=b, op=ast.Add()))
+    assert MatchAST("dude[1]+dude[3]") == new_a
+
+
 def test_replace_holder_with_none():
     a = astIteratorPlaceholder(1, [0, None])
     new_a = replace_holder(1, 'dude').visit(a)
