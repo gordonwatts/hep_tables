@@ -168,6 +168,26 @@ def test_downlevel_with_combined_node(mocker, mock_qt):
     assert len(info.node_as_dict) == 1
 
 
+def test_downlevel_minus_iterator(mocker, mock_root_sequence_transform, mock_qt):
+    'Make sure a level 2 node is down-leveled correctly to level 1, same itr index'
+    mine, a1, root_seq = mock_root_sequence_transform
+    g = Graph(directed=True)
+    level_0 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=root_seq, level=1))
+
+    a2_1 = ast.Constant(10)
+    seq_met = mocker.MagicMock(spec=sequence_downlevel)
+    seq_met.skip_iterators = [1]
+    level_1_1 = g.add_vertex(info=mock_vinfo(mocker, node=a2_1, seq=seq_met, order=0, level=2))
+    g.add_edge(level_1_1, level_0, info=e_info(True, 1))
+
+    reduce_level(g, 2, mock_qt)
+
+    meta = get_v_info(level_1_1)
+    s = meta.sequence
+    assert isinstance(s, sequence_downlevel)
+    assert s.iterator_idx == []
+
+
 def test_reduce_vertices_separate_steps(mocker, mock_qt):
     'Two vertices in different steps, same level, do not get combined'
     g = Graph(directed=True)
@@ -613,17 +633,15 @@ def test_two_iterators_replacement(mocker, mock_qt):
     assert node2 in node4.neighbors(mode='out')
     assert node3 in node4.neighbors(mode='out')
 
-    # The iterators should now both be marked as 1 (since that is main sequence)
-    for e in g.es():
-        assert get_e_info(e).itr_idx == 1
-
-    assert MatchAST("astIteratorPlaceholder(1, [1])") == get_v_info(node3).node_as_dict[a3]
+    assert MatchAST("astIteratorPlaceholder(2, [1])") == get_v_info(node3).node_as_dict[a3]
 
     # The new sequence should forward the render, and not touch the
     # iterator.
     new_seq4 = get_v_info(node4).sequence
     assert isinstance(new_seq4, sequence_downlevel)
     assert new_seq4.iterator_idx == []
+    assert new_seq4.skip_iterators == [2]
+
     # However, the sequence should have changed into some thing that is a second derivation.
     assert MatchAST("Select(a3, lambda e1000: a2 + e1000)", ast_name_dict) == new_seq4.render_ast({})
     seq4.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000')}))

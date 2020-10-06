@@ -1,4 +1,4 @@
-from typing import Iterator, Optional, Tuple, cast
+from typing import Iterator, List, Optional, Tuple, cast
 
 from igraph import Edge, Graph, Vertex  # type: ignore
 
@@ -81,6 +81,24 @@ def parent_iterator_index(v: Vertex) -> int:
         main_edge = find_main_seq_edge(v)
         i = get_e_info(main_edge)
         return i.itr_idx
+
+
+def parent_iterator_indices(v: Vertex) -> List[int]:
+    '''Given a vertex, list all iterator indices that are incoming.
+
+    If this is a top level vertex, then use the iterator index it is using.
+
+    Args:
+        v (Vertex): Vertex to look at input
+
+    Returns:
+        List[int]: List of iterators incoming. It should never be zero length.
+    '''
+    if len(v.out_edges()) == 0:
+        return [get_iterator_index(v)]
+    else:
+        all_indices = set(get_e_info(e).itr_idx for e in v.out_edges())
+        return list(all_indices)
 
 
 def child_iterator_in_use(v: Vertex, level: int) -> Optional[int]:

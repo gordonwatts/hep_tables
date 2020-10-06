@@ -4,7 +4,7 @@ from hep_tables.graph_info import e_info
 
 import pytest
 from hep_tables.util_ast import astIteratorPlaceholder
-from hep_tables.util_graph import child_iterator_in_use, depth_first_traversal, get_iterator_index, highest_used_order, parent_iterator_index
+from hep_tables.util_graph import child_iterator_in_use, depth_first_traversal, get_iterator_index, highest_used_order, parent_iterator_index, parent_iterator_indices
 from igraph import Graph
 
 from tests.conftest import mock_vinfo
@@ -90,6 +90,33 @@ def test_parent_iterator_linked(mocker):
     g.add_edge(v2, v2, info=e_info(True, 2))
 
     assert parent_iterator_index(v2) == 2
+
+
+def test_parent_iterator_all_single(mocker):
+    g = Graph(directed=True)
+    v = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+
+    assert parent_iterator_indices(v) == [1]
+
+
+def test_parent_iterator_all_one_linked(mocker):
+    g = Graph(directed=True)
+    v1 = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    v2 = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    g.add_edge(v2, v1, info=e_info(False, 2))
+
+    assert parent_iterator_indices(v2) == [2]
+
+
+def test_parent_iterator_all_two_linked(mocker):
+    g = Graph(directed=True)
+    v1 = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    v2 = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    v3 = g.add_vertex(info=mock_vinfo(mocker, node={ast.Constant(10): astIteratorPlaceholder(1)}))
+    g.add_edge(v2, v1, info=e_info(False, 2))
+    g.add_edge(v2, v3, info=e_info(False, 3))
+
+    assert parent_iterator_indices(v2) == [2, 3]
 
 
 def test_child_itr_good_child(mocker):

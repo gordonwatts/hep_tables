@@ -113,7 +113,11 @@ class sequence_predicate_base(expression_predicate_base):
 class sequence_downlevel(sequence_predicate_base):
     '''Hold onto a transform that has to be processed one level down (a nested select
     statement that allows us to access an array of an array)'''
-    def __init__(self, transform: expression_predicate_base, var_name: str, itr_id: Union[int, List[int]], main_seq_ast: Optional[ast.AST] = None):
+    def __init__(self, transform: expression_predicate_base,
+                 var_name: str,
+                 itr_id: Union[int, List[int]],
+                 main_seq_ast: Optional[ast.AST] = None,
+                 skip_iterators: List[int] = []):
         '''Create a transform that will operate on the items in an array that is in the current sequence.
 
         `b: b.Select(j: transform(j))`
@@ -130,6 +134,7 @@ class sequence_downlevel(sequence_predicate_base):
         self._var_name = var_name
         self._id = [itr_id] if isinstance(itr_id, int) else itr_id
         self._main_seq = main_seq_ast
+        self._skip_iterators = skip_iterators
 
     @property
     def transform(self) -> expression_predicate_base:
@@ -142,6 +147,15 @@ class sequence_downlevel(sequence_predicate_base):
     @property
     def iterator_idx(self) -> List[int]:
         return self._id
+
+    @property
+    def skip_iterators(self) -> List[int]:
+        '''List of iterators that should be skipped by wrapping sequences.
+
+        Returns:
+            List[int]: Iterator indices to skip
+        '''
+        return self._skip_iterators
 
     def sequence(self, sequence: Optional[ObjectStream], seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
         '''Render the sub-expression and run a Select on the item

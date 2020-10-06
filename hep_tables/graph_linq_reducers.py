@@ -10,7 +10,7 @@ from hep_tables.graph_info import (
     copy_e_info, copy_v_info, e_info, get_e_info, get_v_info, v_info)
 from hep_tables.transforms import expression_transform, expression_tuple, sequence_downlevel
 from hep_tables.util_ast import add_level_to_holder, astIteratorPlaceholder, set_holder_level_index
-from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, get_iterator_index, parent_iterator_index
+from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, get_iterator_index, parent_iterator_index, parent_iterator_indices
 from hep_tables.utils import QueryVarTracker
 
 
@@ -61,8 +61,14 @@ def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
         main_seq_edge = find_main_seq_edge(v)
         main_seq_asts = get_v_info(main_seq_edge.target_vertex).node_as_dict
         main_seq_ast = list(main_seq_asts.keys())[0]
-        seq_itr_idx = parent_iterator_index(v)
-        new_seq = sequence_downlevel(vs_meta.sequence, qv.new_var_name(), seq_itr_idx, main_seq_ast)
+
+        seq_itr_indices = parent_iterator_indices(v)
+
+        seq = vs_meta.sequence
+        if isinstance(seq, sequence_downlevel):
+            seq_itr_indices = list(set(seq_itr_indices) - set(seq.skip_iterators))
+
+        new_seq = sequence_downlevel(seq, qv.new_var_name(), seq_itr_indices, main_seq_ast)
         new_node_dict = {k: add_level_to_holder().visit(v) for k, v in vs_meta.node_as_dict.items()}
         v['info'] = copy_v_info(vs_meta, new_sequence=new_seq, new_level=level - 1, new_node=new_node_dict)
 
@@ -171,7 +177,7 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
         3. For that iterator, replace the iterator number with the main sequence
            iterator number (as it should have come from the main iterator)
     '''
-    for v in (a_good_v for a_good_v in g.vs() if get_v_info(a_good_v).level == level):
+    for v in (a_good_v for a_good_v in g.vs() if (get_v_info(a_good_v).level == level) and ('chained' not in a_good_v.attribute_names())):
         parent_edges = v.out_edges()
         all_iterator_indices = set(get_e_info(e).itr_idx for e in parent_edges)
         if len(all_iterator_indices) > 1:
@@ -180,7 +186,6 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
             iterator_indices = all_iterator_indices - main_iterator_indices
             assert len(iterator_indices) > 0, f'Internal error - not enough unique indices: {iterator_indices}'
 
-            main_iterator_index = list(main_iterator_indices)[0]
             seq = get_v_info(v).sequence
             for i in iterator_indices:
                 itr_edges = [e for e in v.out_edges() if get_e_info(e).itr_idx == i]
@@ -190,18 +195,13 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
                 var_name = qt.new_var_name()
                 new_expr = seq.render_ast({parent_asts[0]: ast.Name(id=var_name)})
 
-                seq = sequence_downlevel(expression_transform(new_expr), var_name, [], parent_asts[0])
-
-                # Fix up all edges to have the proper iterator, and the parent ast's.
-                for e in itr_edges:
-                    e['info'] = copy_e_info(get_e_info(e), new_itr_idx=main_iterator_index)
-                for v_i in itr_nodes:
-                    info = get_v_info(v_i)
-                    v_i['info'] = copy_v_info(info, new_node=_convert_itr_index(info.node_as_dict, i, main_iterator_index))
+                seq = sequence_downlevel(expression_transform(new_expr), var_name, [], parent_asts[0],
+                                         skip_iterators=list(iterator_indices))
 
             # Update vertex and edges
             new_v_info = copy_v_info(get_v_info(v), new_sequence=seq)
             v['info'] = new_v_info
+            v['chained'] = True
 
 
 def _find_edge(v1: Vertex, v2: Vertex) -> Optional[Edge]:
