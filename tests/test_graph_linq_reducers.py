@@ -606,10 +606,10 @@ def test_two_iterators_replacement(mocker, mock_qt):
 
     # Now, the two nodes that have different iterator sequences
     a2 = ast.Num(n=2)
-    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a2: astIteratorPlaceholder(1, [0])}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a2: astIteratorPlaceholder(1)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
 
     a3 = ast.Num(n=3)
-    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a3: astIteratorPlaceholder(2, [1])}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a3: astIteratorPlaceholder(2)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
 
     # Next, the node that uses both of them.
     a4 = ast.Num(n=4)
@@ -630,8 +630,6 @@ def test_two_iterators_replacement(mocker, mock_qt):
     assert node2 in node4.neighbors(mode='out')
     assert node3 in node4.neighbors(mode='out')
 
-    assert MatchAST("astIteratorPlaceholder(2, [1])") == get_v_info(node3).node_as_dict[a3]
-
     # The new sequence should forward the render, and not touch the
     # iterator.
     new_seq4 = get_v_info(node4).sequence
@@ -644,19 +642,97 @@ def test_two_iterators_replacement(mocker, mock_qt):
     seq4.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000')}))
 
 
+def test_two_iterators_with_three_terms(mocker, mock_qt):
+    'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
+    g = Graph(directed=True)
+
+    # Now, the two nodes that have different iterator sequences
+    a2 = ast.Num(n=2)
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a2: astIteratorPlaceholder(1)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a3 = ast.Num(n=3)
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a3: astIteratorPlaceholder(2)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a4 = ast.Num(n=4)
+    node4 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a4: astIteratorPlaceholder(2)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    # Next, the node that uses all of them.
+    a5 = ast.Num(n=5)
+    seq5 = mocker.MagicMock(spec=expression_transform)
+    ast_name_dict: Dict[str, ast.AST] = {"a2": a2, "a3": a3, "a4": a4}
+    seq5.render_ast.return_value = parse_ast_string("a2 + e1000 + e1000", ast_name_dict)
+    node5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a5, order=1, seq=seq5))
+    g.add_edge(node5, node2, info=e_info(True))
+    g.add_edge(node5, node3, info=e_info(False))
+    g.add_edge(node5, node4, info=e_info(False))
+
+    # Now do the iterator reduction. It should hit this node.
+    reduce_iterator_chaining(g, level=2, qt=mock_qt)
+
+    # Basics of the node topology should not have changed
+    assert len(g.vs()) == 4
+    assert len(g.es()) == 3
+
+    assert node2 in node5.neighbors(mode='out')
+    assert node3 in node5.neighbors(mode='out')
+
+    # The new sequence should forward the render, and not touch the
+    # iterator.
+    new_seq5 = get_v_info(node5).sequence
+    assert isinstance(new_seq5, sequence_downlevel)
+    assert new_seq5.iterator_idx == []
+    assert new_seq5.skip_iterators == [2]
+
+    # However, the sequence should have changed into some thing that is a second derivation.
+    assert MatchAST("Select(a3, lambda e1000: a2 + e1000 + e1000)", ast_name_dict) == new_seq5.render_ast({})
+    seq5.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000'), a4: ast.Name(id='e1000')}))
+
+
 def test_three_iterators_replacement(mocker, mock_qt):
     'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
     g = Graph(directed=True)
 
     # Now, the two nodes that have different iterator sequences
     a2 = ast.Num(n=2)
-    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a2: astIteratorPlaceholder(1, [0])}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a2: astIteratorPlaceholder(1)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
 
     a3 = ast.Num(n=3)
-    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a3: astIteratorPlaceholder(2, [1])}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a3: astIteratorPlaceholder(2)}, order=2, seq=mocker.MagicMock(spec=expression_transform)))
 
     a4 = ast.Num(n=4)
-    node4 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a4: astIteratorPlaceholder(3, [1])}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+    node4 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a4: astIteratorPlaceholder(3)}, order=3, seq=mocker.MagicMock(spec=expression_transform)))
+
+    # Next, the node that uses all of them.
+    a5 = ast.Num(n=5)
+    seq5 = mocker.MagicMock(spec=expression_transform)
+    ast_name_dict: Dict[str, ast.AST] = {"a2": a2, "a3": a3, "a4": a4}
+    seq5.render_ast.return_value = parse_ast_string("a2 + e1000 + a4", ast_name_dict)
+    node5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a5, order=1, seq=seq5))
+    g.add_edge(node5, node2, info=e_info(True))
+    g.add_edge(node5, node3, info=e_info(False))
+    g.add_edge(node5, node4, info=e_info(False))
+
+    # Now do the iterator reduction. It should hit this node.
+    reduce_iterator_chaining(g, level=2, qt=mock_qt)
+
+    # make sure all down-level iterators are properly called.
+    new_seq5 = get_v_info(node5).sequence
+    assert MatchAST("Select(a4, lambda e1001: Select(a3, lambda e1000: a2 + e1000 + e1001))", ast_name_dict) == new_seq5.render_ast({})
+
+
+def test_three_iterators_sequence_good(mocker, mock_qt):
+    'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
+    g = Graph(directed=True)
+
+    # Now, the two nodes that have different iterator sequences
+    a2 = ast.Num(n=2)
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a2: astIteratorPlaceholder(1)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a3 = ast.Num(n=3)
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a3: astIteratorPlaceholder(2)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a4 = ast.Num(n=4)
+    node4 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a4: astIteratorPlaceholder(3)}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
 
     # Next, the node that uses all of them.
     a5 = ast.Num(n=5)

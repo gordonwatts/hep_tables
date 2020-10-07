@@ -192,7 +192,7 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
                 parent_asts = list(chain.from_iterable([list(get_v_info(v_parent).node_as_dict) for v_parent in itr_nodes]))
                 # Assume all parents of a single iterator have the same path back to that iterator.
                 var_name = qt.new_var_name()
-                new_expr = seq.render_ast({parent_asts[0]: ast.Name(id=var_name)})
+                new_expr = seq.render_ast({k: ast.Name(id=var_name) for k in parent_asts})
 
                 seq = sequence_downlevel(expression_transform(new_expr), var_name, [], parent_asts[0],
                                          skip_iterators=list(iterator_indices))
