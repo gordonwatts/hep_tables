@@ -644,6 +644,39 @@ def test_two_iterators_replacement(mocker, mock_qt):
     seq4.render_ast.assert_called_with(MatchASTDict({a3: ast.Name(id='e1000')}))
 
 
+def test_three_iterators_replacement(mocker, mock_qt):
+    'Two parent nodes, and different iteration sequences. Make sure they are correctly combined.'
+    g = Graph(directed=True)
+
+    # Now, the two nodes that have different iterator sequences
+    a2 = ast.Num(n=2)
+    node2 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a2: astIteratorPlaceholder(1, [0])}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a3 = ast.Num(n=3)
+    node3 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a3: astIteratorPlaceholder(2, [1])}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    a4 = ast.Num(n=4)
+    node4 = g.add_vertex(info=mock_vinfo(mocker, level=1, node={a4: astIteratorPlaceholder(3, [1])}, order=1, seq=mocker.MagicMock(spec=expression_transform)))
+
+    # Next, the node that uses all of them.
+    a5 = ast.Num(n=5)
+    seq5 = mocker.MagicMock(spec=expression_transform)
+    ast_name_dict: Dict[str, ast.AST] = {"a2": a2, "a3": a3, "a4": a4}
+    seq5.render_ast.return_value = parse_ast_string("a2 + e1000", ast_name_dict)
+    node5 = g.add_vertex(info=mock_vinfo(mocker, level=2, node=a5, order=1, seq=seq5))
+    g.add_edge(node5, node2, info=e_info(True))
+    g.add_edge(node5, node3, info=e_info(False))
+    g.add_edge(node5, node4, info=e_info(False))
+
+    # Now do the iterator reduction. It should hit this node.
+    reduce_iterator_chaining(g, level=2, qt=mock_qt)
+
+    # Check the skip iterators
+    new_seq5 = get_v_info(node5).sequence
+    assert isinstance(new_seq5, sequence_downlevel)
+    assert new_seq5.skip_iterators == [2, 3]
+
+
 def test_two_iterators_same_iterator(mocker, mock_qt):
     'If we do not have two different iterators, then it should do no chaining'
     g = Graph(directed=True)
