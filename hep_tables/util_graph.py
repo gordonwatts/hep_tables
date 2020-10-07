@@ -44,25 +44,23 @@ def find_main_seq_edge(v: Vertex) -> Edge:
     return main_edges[0]
 
 
-def get_iterator_index(v: Vertex) -> int:
-    '''Return a the iterator index this vertex is going to "generate" - that is, the iterator
+def vertex_iterator_indices(v: Vertex) -> List[int]:
+    '''Return a the iterator indices this vertex is going to "publish" - that is, the iterator
     that this vertexes children will be using (output? vertex iterator).
 
     Args:
         v (Vertex): Vertex on which we should determine the iterator index
 
     Returns:
-        int: The iterator index
+        List[int]: The iterator index list
     '''
     info = get_v_info(v)
     indices = set((cast(astIteratorPlaceholder, val).iterator_number for _, val in info.node_as_dict.items()))
-    assert len(indices) == 1, 'Internal error - too many different iterator indexes - do not know how to process'
-    return list(indices)[0]
+    return list(indices)
 
 
-def parent_iterator_index(v: Vertex) -> int:
-    '''Given a vertex, find its main sequence in, and figure out the iterator number for it.
-    This is the iterator that the vertex `v` will be iterating over.
+def parent_iterator_indices(v: Vertex, main_only: bool = False) -> List[int]:
+    '''Given a vertex, find all the vertices that are feeding it.
 
     It this is a top level vertex, then use the iterator index it is using.
 
@@ -70,35 +68,20 @@ def parent_iterator_index(v: Vertex) -> int:
         v (Vertex): The vertex which we will look at its input for.
 
     Returns:
-        int: The index that was used.
+        List[int]: The index that was used.
 
     Note:
     TODO: Is this getting used by anyone any longer?
     '''
     if len(v.out_edges()) == 0:
-        return get_iterator_index(v)
+        return vertex_iterator_indices(v)
     else:
-        main_edge = find_main_seq_edge(v)
-        i = get_e_info(main_edge)
-        return i.itr_idx
-
-
-def parent_iterator_indices(v: Vertex) -> List[int]:
-    '''Given a vertex, list all iterator indices that are incoming.
-
-    If this is a top level vertex, then use the iterator index it is using.
-
-    Args:
-        v (Vertex): Vertex to look at input
-
-    Returns:
-        List[int]: List of iterators incoming. It should never be zero length.
-    '''
-    if len(v.out_edges()) == 0:
-        return [get_iterator_index(v)]
-    else:
-        all_indices = set(get_e_info(e).itr_idx for e in v.out_edges())
-        return list(all_indices)
+        out_edges = v.out_edges()
+        if main_only:
+            out_edges = [e for e in out_edges if get_e_info(e).main]
+        parent_vertices = (e.target_vertex for e in out_edges)
+        all_iterators = set(i for p_v in parent_vertices for i in vertex_iterator_indices(p_v))
+        return list(all_iterators)
 
 
 def child_iterator_in_use(v: Vertex, level: int) -> Optional[int]:

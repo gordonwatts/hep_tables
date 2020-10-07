@@ -7,10 +7,10 @@ from dataframe_expressions.utils_ast import CloningNodeTransformer
 from igraph import Edge, Graph, Vertex  # type:ignore
 
 from hep_tables.graph_info import (
-    copy_e_info, copy_v_info, e_info, get_e_info, get_v_info, v_info)
+    copy_v_info, e_info, get_e_info, get_v_info, v_info)
 from hep_tables.transforms import expression_transform, expression_tuple, sequence_downlevel
 from hep_tables.util_ast import add_level_to_holder, astIteratorPlaceholder, set_holder_level_index
-from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, get_iterator_index, parent_iterator_index, parent_iterator_indices
+from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, parent_iterator_indices, vertex_iterator_indices
 from hep_tables.utils import QueryVarTracker
 
 
@@ -122,13 +122,14 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
                 ast_list = {}
                 for index, v in enumerate(sorted(p_group, key=lambda k: get_v_info(k).order)):
                     # Get the main sequence first
-                    out_itr_index = get_iterator_index(v)
+                    out_itr_index = vertex_iterator_indices(v)
 
                     # Track this transform in the tuple
                     vs_meta = get_v_info(v)
                     transforms.append(vs_meta.sequence)
                     for key, val in vs_meta.node_as_dict.items():
-                        set_holder_level_index(out_itr_index, index).visit(val)
+                        for itr in out_itr_index:
+                            set_holder_level_index(itr, index).visit(val)
                         ast_list[key] = val
 
                     # Update edges to vertices that depend on us
@@ -145,7 +146,7 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
                         v_dep = e.target_vertex
                         info = get_e_info(e)
                         is_main = info.main and not found_main
-                        _update_edge(new_vertex, v_dep, e_info(is_main, info.itr_idx))
+                        _update_edge(new_vertex, v_dep, e_info(is_main))
                         found_main = found_main or is_main
                     g.delete_edges(dependent_edges)
 
@@ -178,18 +179,16 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
            iterator number (as it should have come from the main iterator)
     '''
     for v in (a_good_v for a_good_v in g.vs() if (get_v_info(a_good_v).level == level) and ('chained' not in a_good_v.attribute_names())):
-        parent_edges = v.out_edges()
-        all_iterator_indices = set(get_e_info(e).itr_idx for e in parent_edges)
+        all_iterator_indices = set(parent_iterator_indices(v))
         if len(all_iterator_indices) > 1:
-            main_iterator_indices = set(get_e_info(e).itr_idx for e in parent_edges if get_e_info(e).main)
+            main_iterator_indices = set(parent_iterator_indices(v, main_only=True))
             assert len(main_iterator_indices) == 1, 'Internal error - cannot deal with more than one main seq'
             iterator_indices = all_iterator_indices - main_iterator_indices
             assert len(iterator_indices) > 0, f'Internal error - not enough unique indices: {iterator_indices}'
 
             seq = get_v_info(v).sequence
             for i in iterator_indices:
-                itr_edges = [e for e in v.out_edges() if get_e_info(e).itr_idx == i]
-                itr_nodes = [e.target_vertex for e in itr_edges]
+                itr_nodes = [e.target_vertex for e in v.out_edges() if i in vertex_iterator_indices(e.target_vertex)]
                 parent_asts = list(chain.from_iterable([list(get_v_info(v_parent).node_as_dict) for v_parent in itr_nodes]))
                 # Assume all parents of a single iterator have the same path back to that iterator.
                 var_name = qt.new_var_name()
@@ -233,13 +232,13 @@ def _update_edge(source_vertex: Vertex, target_vertex: Vertex, info: e_info):
     if old_edge is None:
         # Create a vertex
         # TODO: Make sure the proper iterator number is created here
-        source_vertex.graph.add_edge(source_vertex, target_vertex, info=e_info(info.main, info.itr_idx))
+        source_vertex.graph.add_edge(source_vertex, target_vertex, info=e_info(info.main))
     else:
         # See if we need ot do the update.
         old_info = get_e_info(old_edge)
         # TODO: what about two indices? Ok to ignore? See test test_two_iterators_combined
         if not old_info.main and (old_info.main != info.main):
-            old_edge['info'] = e_info(True, old_info.itr_idx)
+            old_edge['info'] = e_info(True)
 
 
 def _convert_itr_index(info: Dict[ast.AST, ast.AST], old_itr: int, new_itr: int) -> Dict[ast.AST, ast.AST]:

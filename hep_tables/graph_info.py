@@ -1,5 +1,5 @@
 import ast
-from typing import Dict, List, Optional, Type, Union, cast
+from typing import Dict, List, Optional, Type, cast
 
 from igraph import Edge, Graph, Vertex  # type: ignore
 
@@ -80,9 +80,8 @@ class v_info:
 class e_info:
     '''Metadata attached with a vertex Edge.
     '''
-    def __init__(self, main_seq: bool, iterator_index: int):
+    def __init__(self, main_seq: bool):
         self._main = main_seq
-        self._iterators = iterator_index
 
     @property
     def main(self) -> bool:
@@ -92,15 +91,6 @@ class e_info:
             bool: True if this edge represents the main sequence.
         '''
         return self._main
-
-    @property
-    def itr_idx(self) -> int:
-        '''Return the iterator index this edge is using
-
-        Returns:
-            int: The iterator index
-        '''
-        return self._iterators
 
 
 class g_info:
@@ -161,14 +151,6 @@ def copy_v_info(old: v_info,
     new_type = old.v_type
 
     return v_info(new_level, new_seq, new_type, new_node, new_order)
-
-
-def copy_e_info(old: e_info,
-                new_itr_idx: Optional[int] = None):
-    new_main_seq = old.main
-    new_itr_idx = new_itr_idx if new_itr_idx is not None else old.itr_idx
-
-    return e_info(new_main_seq, new_itr_idx)
 
 
 def get_e_info(e: Edge) -> e_info:

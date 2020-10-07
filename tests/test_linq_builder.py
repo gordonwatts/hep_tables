@@ -35,7 +35,7 @@ def test_source_and_single_generator(mocker, mock_root_sequence_transform):
     seq_met.sequence.return_value = proper_return
     level_1 = g.add_vertex(info=v_info(1, seq_met, Any, {a2: astIteratorPlaceholder(1)}))
 
-    g.add_edge(level_1, level_0, info=e_info(True, 1))
+    g.add_edge(level_1, level_0, info=e_info(True))
 
     r = build_linq_expression(g)
 
@@ -55,7 +55,7 @@ def test_level_appropriate(mocker, mock_root_sequence_transform):
     seq_met.sequence.return_value = proper_return
     level_1 = g.add_vertex(info=v_info(1, seq_met, Any, {a2: astIteratorPlaceholder(1)}))
 
-    g.add_edge(level_1, level_0, info=e_info(True, 1))
+    g.add_edge(level_1, level_0, info=e_info(True))
 
     build_linq_expression(g)
 

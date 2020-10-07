@@ -1,5 +1,5 @@
 import ast
-from hep_tables.util_graph import child_iterator_in_use, get_iterator_index, highest_used_order
+from hep_tables.util_graph import child_iterator_in_use, highest_used_order, vertex_iterator_indices
 from hep_tables.util_ast import astIteratorPlaceholder
 from typing import Iterable, Optional, Type, Union, cast
 
@@ -106,12 +106,14 @@ class _translate_to_sequence(ast.NodeVisitor):
         # in common coming from a single vertex - so if one has been already used, start with that.
         # This will change when we allow things like jet-chaining.
         already_used_itr = child_iterator_in_use(v_source, depth)
+        all_iterator_indices = vertex_iterator_indices(v_source)
+        assert len(all_iterator_indices) == 1, 'Internal error: do not deal with number of iterators != 1'
         order = 0
         if already_used_itr is not None:
             itr_index = already_used_itr
             order = highest_used_order(v_source) + 1
         elif depth == vs_meta.level:
-            itr_index = get_iterator_index(v_source)
+            itr_index = all_iterator_indices[0]
         else:
             itr_index = get_g_info(self._g).next_iter_index()
 
@@ -120,7 +122,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         t = expression_transform(function_call)
 
         v = self._g.add_vertex(info=v_info(depth, t, seq_out_type, {node: astIteratorPlaceholder(itr_index)}, order=order))
-        self._g.add_edge(v, v_source, info=e_info(True, get_iterator_index(v_source)))
+        self._g.add_edge(v, v_source, info=e_info(True))
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         '''Process a python binary operator. We support:
@@ -172,18 +174,17 @@ class _translate_to_sequence(ast.NodeVisitor):
         s = expression_transform(l_func_body)
 
         # Figure out if we are using the same index or not
-        left_index = get_iterator_index(left)
-        right_index = get_iterator_index(right)
+        left_index = vertex_iterator_indices(left)[0]
 
         # Fix up the source order.
         if left_meta.order == right_meta.order:
-            right['info'] = copy_v_info(right_meta, new_order=right_meta.order+1)
+            right['info'] = copy_v_info(right_meta, new_order=right_meta.order + 1)
 
         # Create the vertex and connect to a and b via edges
         # We make, arbitrarily, the left sequence the main sequence (left is better!)
         op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, {node: astIteratorPlaceholder(left_index)}))
-        self._g.add_edge(op_vertex, left, info=e_info(True, left_index))
-        self._g.add_edge(op_vertex, right, info=e_info(False, right_index))
+        self._g.add_edge(op_vertex, left, info=e_info(True))
+        self._g.add_edge(op_vertex, right, info=e_info(False))
 
     def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:
         '''Visit a root of the tree. This will form the basis of all of the graph.
@@ -319,13 +320,13 @@ class _translate_to_sequence(ast.NodeVisitor):
         seq = expression_transform(transform_body)
         for i in range(level):
             return_type = Iterable[return_type]  # type: ignore
-        v_i = v_info(level, seq, return_type, {node: astIteratorPlaceholder(get_iterator_index(arg_vtx[0]))})
+        v_i = v_info(level, seq, return_type, {node: astIteratorPlaceholder(vertex_iterator_indices(arg_vtx[0])[0])})
         new_v = self._g.add_vertex(info=v_i)
 
         main_seq = True
         for v in arg_vtx:
             assert get_v_info(v).level == level, 'TODO: Make sure this test case is covered for edge index'
-            self._g.add_edge(new_v, v, info=e_info(main_seq, get_iterator_index(v)))
+            self._g.add_edge(new_v, v, info=e_info(main_seq))
             main_seq = False
 
 
