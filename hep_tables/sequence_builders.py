@@ -1,7 +1,7 @@
 import ast
 from hep_tables.util_graph import child_iterator_in_use, highest_used_order, vertex_iterator_indices
 from hep_tables.util_ast import astIteratorPlaceholder
-from typing import Iterable, Optional, Type, Union, cast
+from typing import Iterable, List, Optional, Type, Union, cast
 
 from dataframe_expressions.asts import ast_Callable, ast_DataFrame, ast_FunctionPlaceholder
 from dataframe_expressions.render_dataframe import render_callable, render_context
@@ -177,8 +177,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         left_index = vertex_iterator_indices(left)[0]
 
         # Fix up the source order.
-        if left_meta.order == right_meta.order:
-            right['info'] = copy_v_info(right_meta, new_order=right_meta.order + 1)
+        _fixup_vertex_order([left, right])
 
         # Create the vertex and connect to a and b via edges
         # We make, arbitrarily, the left sequence the main sequence (left is better!)
@@ -316,6 +315,10 @@ class _translate_to_sequence(ast.NodeVisitor):
         if not all(level == m.level for m in arg_meta):
             raise FuncADLTablesException(f'In order to call {func_name}({arg_types}), all items need to have the same number of array dimensions.')
 
+        # Fix up the ordering of the arguments - not strictly necessary
+        # however, it does mean the code will always do things the same way.
+        _fixup_vertex_order(arg_vtx)
+
         # Ok - since this works, lets build the function.
         seq = expression_transform(transform_body)
         for i in range(level):
@@ -336,3 +339,16 @@ def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:
     v_list = list(g.vs.select(lambda v: get_v_info(v).node is node))
     assert len(v_list) == 1, f'Internal error: Should be only one node per vertex - found {len(v_list)}'
     return v_list[0]
+
+
+def _fixup_vertex_order(vtxs: List[Vertex]):
+    '''The vertices specified here should run in order. Bump the order numbers to make it work.
+
+    Args:
+        vtxs (List[Vertex]): Ordered list of vertices
+    '''
+    order = -1
+    for v in vtxs:
+        if get_v_info(v).order <= order:
+            v['info'] = copy_v_info(get_v_info(v), new_order=order + 1)
+        order = get_v_info(v).order

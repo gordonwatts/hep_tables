@@ -1,6 +1,6 @@
 import ast
 from hep_tables.util_ast import astIteratorPlaceholder
-from typing import Callable, Iterable, List, Match, Optional, Type, Union, cast
+from typing import Callable, Iterable, List, Optional, Type, Union
 
 import pytest
 from dataframe_expressions.asts import (ast_Callable, ast_DataFrame,
@@ -598,8 +598,8 @@ def test_function_two_arg(mocker):
 
     g = Graph(directed=True)
     g['info'] = g_info([])
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {a: astIteratorPlaceholder(1)}))
-    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
+    v_a = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {a: astIteratorPlaceholder(1)}))
+    v_b = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float, float], float]
@@ -619,6 +619,9 @@ def test_function_two_arg(mocker):
     assert isinstance(seq, expression_transform)
     assert MatchAST("my_func(e1000, e2000)") \
         == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
+
+    # Check the order
+    assert get_v_info(v_a).order < get_v_info(v_b).order
 
 
 def test_function_single_arg_level2(mocker):
@@ -851,9 +854,5 @@ def test_double_map(mocker):
 
     edges = add_v.out_edges()
     assert len(edges) == 2
-
-
-# df.jets.map(lambda j: df.tracks.map(lambda t: dr(j.pt, t.pt)))
-# df.jets.map(lambda j1: jf.jets.map(lambda j2: dr(j1.pt, j2.pt)))
 
 # TODO: Make sure df.jets.pt() works! and df.jets().pt() too.
