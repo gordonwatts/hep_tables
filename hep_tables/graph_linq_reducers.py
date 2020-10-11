@@ -194,6 +194,11 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
                 var_name = qt.new_var_name()
                 seq = sequence_downlevel(seq, var_name, [i], parent_asts[0],
                                          skip_iterators=list(iterator_indices))
+                # TODO: Skip_iterators is only one transform deep, not composable. Needs to be put
+                # into the Vertex object (as a new variable). Imaginging having two of these chaining
+                # that then get combined in a tuple (since chaining happens before tupl'ing).
+                # See also notes in OneNote about this. Need a test that breaks this before we
+                # do anything further.
 
             # Update vertex and edges
             new_v_info = copy_v_info(get_v_info(v), new_sequence=seq)
