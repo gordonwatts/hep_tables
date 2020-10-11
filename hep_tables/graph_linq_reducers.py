@@ -190,11 +190,9 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
             for i in iterator_indices:
                 itr_nodes = [e.target_vertex for e in v.out_edges() if i in vertex_iterator_indices(e.target_vertex)]
                 parent_asts = list(chain.from_iterable([list(get_v_info(v_parent).node_as_dict) for v_parent in itr_nodes]))
-                # Assume all parents of a single iterator have the same path back to that iterator.
-                var_name = qt.new_var_name()
-                new_expr = seq.render_ast({k: ast.Name(id=var_name) for k in parent_asts})
 
-                seq = sequence_downlevel(expression_transform(new_expr), var_name, [], parent_asts[0],
+                var_name = qt.new_var_name()
+                seq = sequence_downlevel(seq, var_name, [i], parent_asts[0],
                                          skip_iterators=list(iterator_indices))
 
             # Update vertex and edges
