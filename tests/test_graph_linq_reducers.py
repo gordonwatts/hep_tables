@@ -4,14 +4,14 @@ from typing import Dict
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.graph_info import e_info, g_info, get_e_info, get_v_info
-from hep_tables.graph_linq_reducers import (find_highest_level, reduce_iterator_chaining, reduce_level,
+from hep_tables.graph_linq_reducers import (add_missing_steps, find_highest_level, reduce_iterator_chaining, reduce_level,
                                             reduce_tuple_vertices,
                                             run_linear_reduction)
 from hep_tables.transforms import (expression_transform, expression_tuple,
                                    sequence_downlevel)
 from hep_tables.util_ast import astIteratorPlaceholder
 
-from .conftest import MatchAST, MatchASTDict, mock_vinfo, parse_ast_string
+from .conftest import MatchAST, mock_vinfo, parse_ast_string
 
 
 def test_level_one_node(mocker):
@@ -775,6 +775,108 @@ def test_two_same_iterators_from_one_node(mocker, mock_qt):
     # However, the sequence should have changed into some thing that is a second derivation.
     new_seq5 = get_v_info(node5).sequence
     assert MatchAST("Select(a3, lambda e1000: a2 + e1000)", ast_name_dict) == new_seq5.render_ast({})
+
+
+def test_missing_empty():
+    'A simple graph with no missing steps'
+    g = Graph(directed=True)
+    add_missing_steps(g)
+    assert len(g.vs()) == 0
+
+
+def test_missing_one_vertex(mocker):
+    'A graph with a single vertex should not be touched'
+
+    g = Graph(directed=True)
+    a1 = ast.Constant(10)
+    g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+
+    add_missing_steps(g)
+    assert len(g.vs()) == 1
+
+
+def test_missing_multi_step_ok(mocker):
+    'A graph with three steps, but nothing missing'
+    g = Graph(directed=True)
+
+    a1 = ast.Constant(10)
+    v1 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+    a2 = ast.Constant(20)
+    v2 = g.add_vertex(info=mock_vinfo(mocker, node=a2, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+    a3 = ast.Constant(30)
+    v3 = g.add_vertex(info=mock_vinfo(mocker, node=a3, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+
+    g.add_edge(v2, v1, info=e_info(True))
+    g.add_edge(v3, v2, info=e_info(True))
+
+    add_missing_steps(g)
+    assert len(g.vs()) == 3
+
+
+def test_missing_multi_step_missing_multi_dependency(mocker):
+    'A graph with three steps, with doubling up forcing a missing step'
+    g = Graph(directed=True)
+
+    a1 = ast.Constant(10)
+    v1 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+    a2 = ast.Constant(20)
+    v2 = g.add_vertex(info=mock_vinfo(mocker, node=a2, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+    a3 = ast.Constant(30)
+    v3 = g.add_vertex(info=mock_vinfo(mocker, node=a3, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+
+    g.add_edge(v2, v1, info=e_info(True))
+    g.add_edge(v3, v2, info=e_info(True))
+    g.add_edge(v3, v1, info=e_info(True))
+
+    add_missing_steps(g)
+
+    assert len(g.vs()) == 4
+    assert len(v1.in_edges()) == 2
+
+    v_new = list(g.vs())[-1]
+    assert len(v_new.out_edges()) == 1
+    e_out = v_new.out_edges()[0]
+    assert e_out.target_vertex == v1
+    assert len(v_new.in_edges()) == 1
+    e_in = v_new.in_edges()[0]
+    assert e_in.source_vertex == v3
+
+    info = get_v_info(v_new)
+    assert info.node is a1
+    assert MatchAST(info.node_as_dict[a1]) == get_v_info(v1).node_as_dict[a1]
+    assert info.node_as_dict[a1] is not get_v_info(v1).node_as_dict[a1]
+    seq = info.sequence
+    assert isinstance(seq, expression_transform)
+    assert seq._exp is a1
+
+
+def test_missing_multi_step_missing(mocker):
+    'A graph with a simple missing gap'
+    g = Graph(directed=True)
+
+    a1 = ast.Constant(10)
+    v1 = g.add_vertex(info=mock_vinfo(mocker, node=a1, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+    a2 = ast.Constant(20)
+    v2 = g.add_vertex(info=mock_vinfo(mocker, node=a2, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+    a3 = ast.Constant(30)
+    v3 = g.add_vertex(info=mock_vinfo(mocker, node=a3, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+    a4 = ast.Constant(40)
+    v4 = g.add_vertex(info=mock_vinfo(mocker, node=a4, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+    a5 = ast.Constant(40)
+    v5 = g.add_vertex(info=mock_vinfo(mocker, node=a5, seq=mocker.MagicMock(spec=expression_transform), order=0, level=0))
+
+    g.add_edge(v2, v1, info=e_info(True))
+    g.add_edge(v3, v1, info=e_info(True))
+    g.add_edge(v4, v2, info=e_info(True))
+    g.add_edge(v5, v4, info=e_info(True))
+    g.add_edge(v5, v3, info=e_info(False))
+
+    add_missing_steps(g)
+
+    assert len(g.vs()) == 6
+
+    v_new = list(g.vs())[-1]
+    assert set(v5.neighbors(mode='out')) == set([v_new, v4])
 
 
 def test_single_to_zero(mocker, mock_qt):

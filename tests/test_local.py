@@ -137,6 +137,8 @@ def test_single_and_double(servicex_ds):
     met = df.met
 
     sum = jets.map(lambda j: j.pt + met)
+    # TODO: Make sure there is a test that bombs df.met + df.jet.pt, and the error
+    # message is understandable.
 
     _new_make_local(sum)
 

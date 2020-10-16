@@ -9,7 +9,7 @@ from igraph import Edge, Graph, Vertex  # type:ignore
 from hep_tables.graph_info import (
     copy_v_info, e_info, get_e_info, get_v_info, v_info)
 from hep_tables.transforms import expression_transform, expression_tuple, sequence_downlevel
-from hep_tables.util_ast import add_level_to_holder, astIteratorPlaceholder, set_holder_level_index
+from hep_tables.util_ast import add_level_to_holder, astIteratorPlaceholder, clone_holders, set_holder_level_index
 from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, parent_iterator_indices, vertex_iterator_indices
 from hep_tables.utils import QueryVarTracker
 
@@ -21,6 +21,10 @@ def run_linear_reduction(g: Graph, qv: QueryVarTracker):
     Args:
         g (Graph): [description]
     '''
+    # Fill in any gaps in the graph
+    add_missing_steps(g)
+
+    # Now, walk down the levels, pounding the vertices into shape
     max_level = find_highest_level(g)
     for level in range(max_level, 0, -1):
         reduce_iterator_chaining(g, level, qv)
@@ -204,6 +208,42 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
             new_v_info = copy_v_info(get_v_info(v), new_sequence=seq)
             v['info'] = new_v_info
             v['chained'] = True
+
+
+def add_missing_steps(g: Graph):
+    '''Look at the graph, step-by-step, and look for anything edges that go back more
+    than one step. If they do, then add vertices to fix the missing steps.
+
+    Args:
+        g (Graph): Graph to look for the missing steps in.
+    '''
+    steps = list(depth_first_traversal(g))
+    vertex_step: Dict[Vertex, int] = {}
+    for index, grouping in enumerate(steps):
+        print(f'Step {index}')
+        for v in grouping:
+            vertex_step[v] = index
+            print(f'Adding {v}')
+            delete_edges: List[Edge] = []
+            for e in v.out_edges():
+                assert e.target_vertex in vertex_step, f'Internal error: {e.target_vertex} not in {list(vertex_step.keys())}'
+                if vertex_step[e.target_vertex] != (index - 1):
+                    # fix this up
+                    v_target = e.target_vertex
+                    v_target_info = get_v_info(v_target)
+                    old_e_info = get_e_info(e)
+                    for _ in range((index - 1) - vertex_step[e.target_vertex]):
+                        new_info = copy_v_info(v_target_info,
+                                               new_node={k: clone_holders().visit(val) for k, val in v_target_info.node_as_dict.items()},
+                                               new_sequence=expression_transform(v_target_info.node))
+                        new_v = g.add_vertex(info=new_info)
+
+                        g.add_edge(new_v, v_target, info=old_e_info)
+                        v_target = new_v
+                    g.add_edge(v, v_target, info=old_e_info)
+                    delete_edges.append(e)
+            if len(delete_edges) > 0:
+                g.delete_edges(delete_edges)
 
 
 def _find_edge(v1: Vertex, v2: Vertex) -> Optional[Edge]:

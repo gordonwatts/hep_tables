@@ -143,16 +143,25 @@ class type_inspector:
 
         return len(d_set & a_set) > 0
 
-    def find_broadcast_level_for_args(self, defined_args: Iterable[Type], actual: Iterable[Type]) -> Optional[Tuple[int, Iterable[Type]]]:
+    def find_broadcast_level_for_args(self, defined_args: Iterable[Type], actual: Iterable[Type],
+                                      uneven_downlevel_ok: bool = True) -> Optional[Tuple[int, Iterable[Type]]]:
         '''Return the level to broadcast to and actual arguments if they match an allowed set of arguments.
 
         Args:
             defined_args (Iterable[Type]): The argument types that are allowed
             actual (Iterable[Type]): The arguments that are provided
+            uneven_downlevel_ok (bool): If true, then we we can go down another level ok.
 
         Returns:
             Optional[Tuple[int, Iterable[Type]]]: None if unwrapping by level is not possible. Otherwise, the level to unwrap to,
             and the types that were actually used (useful if a `Union` type is specified)
+
+        Notes:
+
+            - The rules are a little complex.
+              1. Things of matched depth are all ok: (float, float), (Iterable[float] Iterable[float]).
+              1. If inputs are off by one, they are also ok: (float, Iterable[float]),
+                 (Iterable[float], Iterable[Iterable[float]]).
         '''
         t_defined = tuple(defined_args)
         t_actual = tuple(actual)
@@ -163,12 +172,22 @@ class type_inspector:
         if all(self._compare_simple_types(d, a) for d, a in zip(t_defined, t_actual)):
             return 0, t_actual
 
-        # We can only go down a level if everyone can go down a level.
+        # See if we can all go down a level
         new_actual = [self.iterable_object(a) for a in t_actual]
         if any(a is None for a in new_actual):
-            return None
+            if not uneven_downlevel_ok:
+                return None
+            # There are some circumstances underwhich we can go down a further level - if we've
+            # not tried to go down a level before.
+            new_actual = [self.iterable_object(a) if self.iterable_object(a) is not None else a for a in t_actual]
+            if new_actual == actual:
+                return None
+            r = self.find_broadcast_level_for_args(t_defined, new_actual, uneven_downlevel_ok=False)
+            if r is None:
+                return None
+            return r[0] + 1, r[1]
 
-        r = self.find_broadcast_level_for_args(t_defined, new_actual)
+        r = self.find_broadcast_level_for_args(t_defined, new_actual, uneven_downlevel_ok=uneven_downlevel_ok)
         if r is not None:
             return r[0] + 1, r[1]
         return None

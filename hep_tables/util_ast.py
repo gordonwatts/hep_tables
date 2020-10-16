@@ -1,3 +1,4 @@
+from __future__ import annotations
 import ast
 from typing import Dict, List, Optional, Union
 
@@ -55,6 +56,14 @@ class astIteratorPlaceholder(ast.AST):
             that no indexing should occur at that particular level.
         '''
         return self.level_index
+
+    def clone(self) -> astIteratorPlaceholder:
+        '''Clone the placeholder
+
+        Returns:
+            astIteratorPlaceholder: Returns a copy of the place holder
+        '''
+        return astIteratorPlaceholder(self.iterator_number, self.level_index)
 
     def set_level_index(self, index: int):
         '''Sets the index for this placeholder at the current level. It is not possible to set more
@@ -159,3 +168,11 @@ class replace_ast(CloningNodeTransformer):
         if node in self._replace:
             return self._replace[node]
         return super().generic_visit(node)
+
+
+class clone_holders(CloningNodeTransformer):
+    '''Replace any `astIteratorPlaceholder` in the ast
+    with a clone
+    '''
+    def visit_astIteratorPlaceholder(self, node: astIteratorPlaceholder) -> astIteratorPlaceholder:
+        return node.clone()

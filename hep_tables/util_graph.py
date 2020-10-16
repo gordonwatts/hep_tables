@@ -1,4 +1,4 @@
-from typing import Iterator, List, Optional, Tuple, cast
+from typing import Iterator, List, Optional, Set, Tuple, cast
 
 from igraph import Edge, Graph, Vertex  # type: ignore
 
@@ -20,11 +20,28 @@ def depth_first_traversal(g: Graph) -> Iterator[Tuple[Vertex]]:
         Tuple[Vertex]: Generator - list of items at each level
     '''
     nodes = tuple(g.vs.select(lambda v: v.degree(mode='out') == 0))
+    nodes_done: Set[Vertex] = set()
     while len(nodes) != 0:
         yield nodes  # type: ignore
+        nodes_done.update(set(nodes))
         new_nodes = [n.neighbors(mode='in') for n in nodes]
-        u = set(n for n_list in new_nodes for n in n_list)
+        u = set(n for n_list in new_nodes for n in n_list if _parents_in_set(nodes_done, n))
+        u = u - nodes_done.intersection(set(u))
         nodes = tuple(sorted(u, key=lambda v: get_v_info(v).order))
+
+
+def _parents_in_set(nodes: Set[Vertex], v: Vertex) -> bool:
+    '''Return true if all parents of v are in nodes
+
+    Args:
+        nodes (Set[Vertex]): The set of nodes to check
+        v (Vertex): Look at all parents
+
+    Returns:
+        bool: True if all parents are in the set, false otherwise.
+    '''
+    parents = v.neighbors(mode='out')
+    return all(p in nodes for p in parents)
 
 
 def find_main_seq_edge(v: Vertex) -> Edge:

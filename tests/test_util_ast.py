@@ -1,7 +1,7 @@
 import ast
 from tests.conftest import MatchAST
-from typing import Dict
-from hep_tables.util_ast import add_level_to_holder, astIteratorPlaceholder, reduce_holder_by_level, replace_holder, set_holder_level_index
+from typing import Dict, cast
+from hep_tables.util_ast import add_level_to_holder, astIteratorPlaceholder, clone_holders, reduce_holder_by_level, replace_holder, set_holder_level_index
 import pytest
 
 
@@ -46,6 +46,14 @@ def test_ast_dump_with_deep():
     assert ast.dump(a) == 'astIteratorPlaceholder(itr_idx=4, level_index=[1, 2])'
 
 
+def test_ast_iter_clone():
+    a = astIteratorPlaceholder(4, [1, 2])
+    b = a.clone()
+    assert a is not b
+    assert a.iterator_number == 4
+    assert a.levels == [1, 2]
+
+
 def test_set_holder_level_index():
     a = astIteratorPlaceholder(1)
     t = ast.Tuple(elts=[a])
@@ -57,18 +65,6 @@ def test_set_holder_level_index():
     assert isinstance(new_a, astIteratorPlaceholder)
     assert len(new_a.levels) == 1
     assert new_a.levels[0] == 2
-
-
-# def test_set_holder_level_index_wrong_id():
-#     a = astIteratorPlaceholder(1)
-#     t = ast.Tuple(elts=[a])
-
-#     set_holder_level_index(2, 2).visit(t)
-#     new_t = add_level_to_holder(2).visit(t)
-
-#     new_a = new_t.elts[0]
-#     assert isinstance(new_a, astIteratorPlaceholder)
-#     assert len(new_a.levels) == 0
 
 
 def test_ast_holder_reduce_easy():
@@ -163,3 +159,15 @@ def test_replace_burried_holder():
     a = ast.Attribute(value=astIteratorPlaceholder(1, [0]), attr='fork')
     new_a = replace_holder(1, 'dude').visit(a)
     assert MatchAST("dude[0].fork") == new_a
+
+
+def test_clone_in_ast():
+    a = ast.Tuple(elts=[astIteratorPlaceholder(3)])
+    b = clone_holders().visit(a)
+    assert isinstance(b, ast.Tuple)
+    assert len(b.elts) == 1
+    b_itr = b.elts[0]
+    assert isinstance(b_itr, astIteratorPlaceholder)
+    b_itr = cast(astIteratorPlaceholder, b_itr)
+    assert b_itr is not a.elts[0]
+    assert b_itr.iterator_number == 3
