@@ -376,7 +376,7 @@ def test_binary_op(operator, sym, mocker):
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (float, float))
 
     ast_to_graph(op, g, t_mock)
 
@@ -408,7 +408,7 @@ def test_binary_op_with_parent(mocker):
     g.add_edge(v2, v_parent, info=e_info(True))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    t_mock.find_broadcast_level_for_args.return_value = (2, (float, float))
+    t_mock.find_broadcast_level_for_args.return_value = ((2, 2), (float, float))
 
     ast_to_graph(op, g, t_mock)
 
@@ -424,7 +424,7 @@ def test_binary_op_cross(mocker):
     g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(2)}))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (float, float))
 
     ast_to_graph(op, g, t_mock)
 
@@ -452,7 +452,7 @@ def test_binary_op_order_fixup(mocker):
     v2 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(2)}, order=0))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (float, float))
 
     ast_to_graph(op, g, t_mock)
 
@@ -473,7 +473,7 @@ def test_binary_two_levels_down(mocker):
     g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], {b: astIteratorPlaceholder(1)}))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    t_mock.find_broadcast_level_for_args.return_value = (2, (float, float))
+    t_mock.find_broadcast_level_for_args.return_value = ((2, 2), (float, float))
 
     ast_to_graph(op, g, t_mock)
 
@@ -490,6 +490,38 @@ def test_binary_two_levels_down(mocker):
         == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
     t_mock.find_broadcast_level_for_args.assert_called_with((Union[float, int], Union[float, int]),
                                                             (Iterable[Iterable[float]], Iterable[Iterable[float]]))
+
+
+def test_binary_event_constant(mocker):
+    'Test binary operator: Iterable[float] + Iterable[Iterable[float]] - like df.met + df.jet.pt'
+    a = ast.Num('a')
+    b = ast.Name('b')
+    op = ast.BinOp(left=a, right=b, op=ast.Add())
+
+    # Build the pre-existing graph. If these are from df.jets.pt, then they will already be at level 2, which
+    # is where we will need to be operating too - so no change in operator.
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(2, mocker.MagicMock(spec=sequence_predicate_base), Iterable[Iterable[float]], {b: astIteratorPlaceholder(2)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 2), (float, float))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 3
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[Iterable[float]]
+    assert op_v.node is op
+    assert op_v.level == 2
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("e1000 + e2000") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
+    t_mock.find_broadcast_level_for_args.assert_called_with((Union[float, int], Union[float, int]),
+                                                            (Iterable[float], Iterable[Iterable[float]]))
 
 
 def test_binary_bad_type(mocker):
@@ -548,7 +580,7 @@ def test_binary_types(t_left, operator, t_right, t_result, mocker):
     g.add_edge(n2, r, info=e_info(True))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (t_left, t_right))
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (t_left, t_right))
 
     ast_to_graph(op, g, t_mock)
 
@@ -569,7 +601,7 @@ def test_function_single_arg(mocker):
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float,))
+    t_mock.find_broadcast_level_for_args.return_value = ((1,), (float,))
 
     ast_to_graph(c, g, t_mock)
 
@@ -604,7 +636,7 @@ def test_function_two_arg(mocker):
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float, float], float]
     t_mock.callable_type.return_value = ([float, float], float)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (float, float))
 
     ast_to_graph(c, g, t_mock)
 
@@ -637,7 +669,7 @@ def test_function_single_arg_level2(mocker):
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
-    t_mock.find_broadcast_level_for_args.return_value = (2, (float,))
+    t_mock.find_broadcast_level_for_args.return_value = ((2,), (float,))
 
     ast_to_graph(c, g, t_mock)
 
@@ -672,7 +704,7 @@ def test_function_wrong_level(mocker):
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
-    t_mock.find_broadcast_level_for_args.return_value = (2, (float,))
+    t_mock.find_broadcast_level_for_args.return_value = ((2,), (float,))
 
     with pytest.raises(FuncADLTablesException) as e:
         ast_to_graph(c, g, t_mock)
@@ -716,7 +748,7 @@ def test_function_placeholder(mocker):
     t_mock.callable_signature.return_value = Callable[[float], float]
     t_mock.static_function_type.return_value = Callable[[float], float]
     t_mock.callable_type.return_value = ([float], float)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float,))
+    t_mock.find_broadcast_level_for_args.return_value = ((1,), (float,))
 
     ast_to_graph(c, g, t_mock)
 
@@ -748,7 +780,7 @@ def test_function_placeholder_no_return_type(mocker):
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.callable_signature.return_value = Callable[[float], None]
     t_mock.callable_type.return_value = ([float], None)
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float,))
+    t_mock.find_broadcast_level_for_args.return_value = ((1,), (float,))
 
     with pytest.raises(FuncADLTablesException) as e:
         ast_to_graph(c, g, t_mock)
@@ -824,7 +856,7 @@ def test_double_map(mocker):
     t_mock.static_function_type.return_value = Callable[[], float]
     t_mock.callable_type.return_value = ([], float)
     t_mock.iterable_object.return_value = float
-    t_mock.find_broadcast_level_for_args.return_value = (1, (float, float))
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (float, float))
 
     context = render_context()
     context._lookup_dataframe(df_a)

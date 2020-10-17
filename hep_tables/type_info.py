@@ -89,8 +89,8 @@ class type_inspector:
         if i_type.__origin__ != collections.abc.Iterable:  # type: ignore
             return None
 
-        assert len(i_type.__args__) == 1, f'Internal error - iterable with wrong number of args: {i_type}.'
-        return i_type.__args__[0]
+        assert len(i_type.__args__) == 1, f'Internal error - iterable with wrong number of args: {i_type}.'  # type: ignore
+        return i_type.__args__[0]  # type: ignore
 
     def callable_type(self, c_type: Type) -> Tuple[Optional[List[Type]], Optional[Type]]:
         '''Returns information about a callable type, or None
@@ -109,8 +109,8 @@ class type_inspector:
         if c_type.__origin__ != collections.abc.Callable:  # type: ignore
             return (None, None)
 
-        return_type = c_type.__args__[-1]
-        arg_types = list(c_type.__args__[0:-1])
+        return_type = c_type.__args__[-1]  # type: ignore
+        arg_types = list(c_type.__args__[0:-1])  # type: ignore
 
         return (arg_types, return_type)
 
@@ -125,8 +125,8 @@ class type_inspector:
             set of the two.
         '''
         if type(t).__name__ == '_GenericAlias':
-            if t.__origin__ == Union:
-                return set(t.__args__)
+            if t.__origin__ == Union:  # type: ignore
+                return set(t.__args__)  # type: ignore
         r = set()
         r.add(t)
         return r
@@ -143,14 +143,15 @@ class type_inspector:
 
         return len(d_set & a_set) > 0
 
-    def find_broadcast_level_for_args(self, defined_args: Iterable[Type], actual: Iterable[Type],
-                                      uneven_downlevel_ok: bool = True) -> Optional[Tuple[int, Iterable[Type]]]:
-        '''Return the level to broadcast to and actual arguments if they match an allowed set of arguments.
+    def find_broadcast_level_for_args(self, defined_args: Iterable[Type], actual: Iterable[Type]) \
+            -> Optional[Tuple[Tuple[int], Iterable[Type]]]:
+        '''Return the level to broadcast for each argument and
+        actual arguments if they match an allowed set of arguments. Return None if we can't
+        figure out how to do the broadcast.
 
         Args:
             defined_args (Iterable[Type]): The argument types that are allowed
             actual (Iterable[Type]): The arguments that are provided
-            uneven_downlevel_ok (bool): If true, then we we can go down another level ok.
 
         Returns:
             Optional[Tuple[int, Iterable[Type]]]: None if unwrapping by level is not possible. Otherwise, the level to unwrap to,
@@ -162,35 +163,33 @@ class type_inspector:
               1. Things of matched depth are all ok: (float, float), (Iterable[float] Iterable[float]).
               1. If inputs are off by one, they are also ok: (float, Iterable[float]),
                  (Iterable[float], Iterable[Iterable[float]]).
+              1. But unmatched inputs are only ok if they occur at the first level. This is because
+                 otherwise the user code gets very hard to understand.
+            - TODO: With the `map` function it should be ok to get around this above item, but that isn't
+              implemented yet.
         '''
         t_defined = tuple(defined_args)
         t_actual = tuple(actual)
         if len(t_defined) != len(t_actual):
             return None
 
-        # Are the types compatible at this level?
-        if all(self._compare_simple_types(d, a) for d, a in zip(t_defined, t_actual)):
-            return 0, t_actual
+        # Find out deep we have to go for each argument to find a match
+        levels_to_match = [self._level_match(d, a) for d, a in zip(t_defined, t_actual)]
+        if any(lv is None for lv in levels_to_match):
+            return None
 
-        # See if we can all go down a level
-        new_actual = [self.iterable_object(a) for a in t_actual]
-        if any(a is None for a in new_actual):
-            if not uneven_downlevel_ok:
-                return None
-            # There are some circumstances underwhich we can go down a further level - if we've
-            # not tried to go down a level before.
-            new_actual = [self.iterable_object(a) if self.iterable_object(a) is not None else a for a in t_actual]
-            if new_actual == actual:
-                return None
-            r = self.find_broadcast_level_for_args(t_defined, new_actual, uneven_downlevel_ok=False)
-            if r is None:
-                return None
-            return r[0] + 1, r[1]
+        # Make sure there is a legal difference
+        min_level = min(lv[0] for lv in levels_to_match)
+        max_level = max(lv[0] for lv in levels_to_match)
 
-        r = self.find_broadcast_level_for_args(t_defined, new_actual, uneven_downlevel_ok=uneven_downlevel_ok)
-        if r is not None:
-            return r[0] + 1, r[1]
-        return None
+        if (max_level - min_level) > 1:
+            return None
+
+        if (min_level != max_level) and (min_level > 1):
+            return None
+
+        # Return the data
+        return tuple(lv[0] for lv in levels_to_match), tuple(lv[1] for lv in levels_to_match)  # type: ignore
 
     def callable_signature(self, a: Callable, skip_first: bool) -> Type:
         '''Return the Callable[] signature of a method or function
@@ -208,3 +207,31 @@ class type_inspector:
         args: List[type] = [sig.parameters[p].annotation for p in sig.parameters.keys()][skip_index:]
         rtn_type = sig.return_annotation if sig.return_annotation is not inspect.Signature.empty else None
         return Callable[args, rtn_type]  # type: ignore
+
+    def _level_match(self, t_defined: Type, t_actual: Type) -> Optional[Tuple[int, Type]]:
+        '''Return how many levels we have to strip iterable off of `t_actual` to find `t_defined`.
+        If we can't return a -1.
+
+        Args:
+            t_defined (Type): The type that is defined by the method or functions
+            t_actual (Type): The type that we are looking at right now
+
+        Returns:
+            Tuple[int, Type]:
+                level: The level down to access the type
+                Type: The actual type given
+        '''
+        # Are the types compatible at this level?
+        if self._compare_simple_types(t_defined, t_actual):
+            return 0, t_actual
+
+        # Now see if we can take the type down one an find it.
+        a = self.iterable_object(t_actual)
+        if a is None:
+            return None
+
+        # See if this is good!
+        r = self._level_match(t_defined, a)
+        if r is None:
+            return None
+        return r[0] + 1, r[1]

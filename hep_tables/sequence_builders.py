@@ -155,8 +155,10 @@ class _translate_to_sequence(ast.NodeVisitor):
         if func_info is None:
             raise FuncADLTablesException(f'Unable to figure out how to {left_meta.v_type} {node.op} {right_meta.v_type}.')
 
-        level, (l_type, r_type) = func_info
-        assert level == left_meta.level or level == right_meta.level, 'TODO: implied loops in binary ops not yet tested'
+        levels, (l_type, r_type) = func_info
+        max_level = max(levels)
+        assert max_level == left_meta.level or max_level == right_meta.level, 'TODO: implied loops in binary ops not yet tested'
+        level = max_level
 
         # Figure out the return type given the types of these two
         if (l_type == float) or (r_type == float):
@@ -311,9 +313,10 @@ class _translate_to_sequence(ast.NodeVisitor):
         level_type_info = self._t_inspect.find_broadcast_level_for_args(arg_types, [m.v_type for m in arg_meta])
         if level_type_info is None:
             raise FuncADLTablesException(f'Do not know how to call {func_name}({arg_types}) with given argument ({[m.v_type for m in arg_meta]})')
-        level, actual_args = level_type_info
-        if not all(level == m.level for m in arg_meta):
+        levels, actual_args = level_type_info
+        if not all(levels[0] == lv for lv in levels) or any(levels[0] != m.level for m in arg_meta):
             raise FuncADLTablesException(f'In order to call {func_name}({arg_types}), all items need to have the same number of array dimensions.')
+        level = levels[0]
 
         # Fix up the ordering of the arguments - not strictly necessary
         # however, it does mean the code will always do things the same way.
