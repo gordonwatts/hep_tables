@@ -69,8 +69,7 @@ def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
         seq_itr_indices = parent_iterator_indices(v)
 
         seq = vs_meta.sequence
-        if isinstance(seq, sequence_downlevel):
-            seq_itr_indices = list(set(seq_itr_indices) - set(seq.skip_iterators))
+        seq_itr_indices = list(set(seq_itr_indices) - set(seq.skip_iterators))
 
         new_seq = sequence_downlevel(seq, qv.new_var_name(), seq_itr_indices, main_seq_ast)
         new_node_dict = {k: add_level_to_holder().visit(v) for k, v in vs_meta.node_as_dict.items()}
@@ -194,15 +193,15 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
             for i in iterator_indices:
                 itr_nodes = [e.target_vertex for e in v.out_edges() if i in vertex_iterator_indices(e.target_vertex)]
                 parent_asts = list(chain.from_iterable([list(get_v_info(v_parent).node_as_dict) for v_parent in itr_nodes]))
+                parent_levels = list(get_v_info(v_parent).level for v_parent in itr_nodes)
 
-                var_name = qt.new_var_name()
-                seq = sequence_downlevel(seq, var_name, [i], parent_asts[0],
-                                         skip_iterators=list(iterator_indices))
-                # TODO: Skip_iterators is only one transform deep, not composable. Needs to be put
-                # into the Vertex object (as a new variable). Imaginging having two of these chaining
-                # that then get combined in a tuple (since chaining happens before tupl'ing).
-                # See also notes in OneNote about this. Need a test that breaks this before we
-                # do anything further.
+                if parent_levels[0] >= level:
+                    var_name = qt.new_var_name()
+                    seq = sequence_downlevel(seq, var_name, [i], parent_asts[0],
+                                             skip_iterators=list(iterator_indices))
+                else:
+                    seq = expression_transform(seq.render_ast({}),
+                                               skip_iterators=list(iterator_indices))
 
             # Update vertex and edges
             new_v_info = copy_v_info(get_v_info(v), new_sequence=seq)

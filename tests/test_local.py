@@ -145,5 +145,5 @@ def test_single_and_double(servicex_ds):
     assert MatchQastleSequence(lambda f: f
                                .Select("lambda e1: (e1.jets(), e1.met())")
                                .Select("lambda e2: (e2[0].Select(lambda j: j.pt()), e2[1])")
-                               .Select("lambda e4: e4[0].Select(lambda e5: e5 + e4[0])")
+                               .Select("lambda e4: e4[0].Select(lambda e5: e5 + e4[1])")
                                ) == extract_selection(servicex_ds)

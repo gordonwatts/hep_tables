@@ -14,6 +14,18 @@ class expression_predicate_base(ABC):
     '''Base class for all expressions we use to assemble an func_adl expression.
     Everything should derive from this.
     '''
+    def __init__(self, skip_iterators: List[int] = []):
+        self._skip_iterators = skip_iterators
+
+    @property
+    def skip_iterators(self) -> List[int]:
+        '''List of iterators that should be skipped by wrapping sequences.
+
+        Returns:
+            List[int]: Iterator indices to skip
+        '''
+        return self._skip_iterators
+
     @abstractmethod
     def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
         '''Return the ast we are holding, with replacements done as requested in the dict.
@@ -30,12 +42,13 @@ class expression_predicate_base(ABC):
 class expression_transform(expression_predicate_base):
     '''A simple expression, function call, etc.
     '''
-    def __init__(self, exp: ast.AST):
+    def __init__(self, exp: ast.AST, skip_iterators: List[int] = []):
         '''Initialize with an expression.
 
         Args:
             exp (ast.AST): The expression this object should hold onto
         '''
+        super().__init__(skip_iterators)
         self._exp = exp
 
     def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
@@ -55,13 +68,14 @@ class expression_tuple(expression_predicate_base):
     '''A tuple expression - holds several expressions together
     in a tuple.
     '''
-    def __init__(self, expressions: List[expression_predicate_base]):
+    def __init__(self, expressions: List[expression_predicate_base], skip_iterators: List[int] = []):
         '''Create a tuple expression - we will run all the expressions at once
         in a python `Tuple`.
 
         Args:
             expressions (List[expression_predicate_base]): The expressions
         '''
+        super().__init__(skip_iterators)
         self._expressions = expressions
 
     @property
@@ -85,8 +99,8 @@ class expression_tuple(expression_predicate_base):
 class sequence_predicate_base(expression_predicate_base):
     '''Base class that holds a transform that will convert a stream from one form to another.
     '''
-    def __init__(self):
-        pass
+    def __init__(self, skip_iterators: List[int] = []):
+        super().__init__(skip_iterators)
 
     @abstractmethod
     def sequence(self, sequence: Optional[ObjectStream],
@@ -130,11 +144,11 @@ class sequence_downlevel(sequence_predicate_base):
             main_seq_ast (ast.AST): The AST that represents the main sequence we are iterating over.
 
         '''
+        super().__init__(skip_iterators)
         self._transform = transform
         self._var_name = var_name
         self._id = [itr_id] if isinstance(itr_id, int) else itr_id
         self._main_seq = main_seq_ast
-        self._skip_iterators = skip_iterators
 
     @property
     def transform(self) -> expression_predicate_base:
@@ -147,15 +161,6 @@ class sequence_downlevel(sequence_predicate_base):
     @property
     def iterator_idx(self) -> List[int]:
         return self._id
-
-    @property
-    def skip_iterators(self) -> List[int]:
-        '''List of iterators that should be skipped by wrapping sequences.
-
-        Returns:
-            List[int]: Iterator indices to skip
-        '''
-        return self._skip_iterators
 
     def sequence(self, sequence: Optional[ObjectStream], seq_dict: Dict[ast.AST, ast.AST]) -> ObjectStream:
         '''Render the sub-expression and run a Select on the item
