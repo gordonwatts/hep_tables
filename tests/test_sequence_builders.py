@@ -990,6 +990,87 @@ def test_function_single_arg(mocker):
     assert len(v.out_edges()) == 1
 
 
+@pytest.mark.parametrize("b_type, c_type, r_type", [
+                         (int, int, int),
+                         (float, float, float),
+                         (int, float, float),
+                         (float, int, float),
+                         (str, str, str),
+                         ])
+def test_if_expr(b_type, c_type, r_type, mocker):
+    a = ast.Name('a')
+    b = ast.Name('b')
+    c = ast.Name('c')
+    op = ast.IfExp(test=a, body=b, orelse=c)
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[b_type], {b: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[c_type], {c: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1, 1), (bool, b_type, c_type))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 4
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[r_type]
+    assert op_v.node is op
+    assert op_v.level == 1
+    assert MatchASTDict({op: astIteratorPlaceholder(1)}) == op_v.node_as_dict
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("e2000 if e1000 else e3000") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000'), c: ast.Name(id='e3000')})
+
+
+@pytest.mark.parametrize("a_type, b_type, c_type", [
+                         (bool, int, str),
+                         (bool, str, float),
+                         ])
+def test_if_expr_bad_types(a_type, b_type, c_type, mocker):
+    a = ast.Name('a')
+    b = ast.Name('b')
+    c = ast.Name('c')
+    op = ast.IfExp(test=a, body=b, orelse=c)
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[a_type], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[b_type], {b: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[c_type], {c: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1, 1), (a_type, b_type, c_type))
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert "type" in str(e.value).lower()
+
+
+def test_if_expr_bad_test(mocker):
+    a = ast.Name('a')
+    b = ast.Name('b')
+    c = ast.Name('c')
+    op = ast.IfExp(test=a, body=b, orelse=c)
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[int], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {c: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert "type" in str(e.value).lower()
+
+
 def test_function_const_arg(mocker):
     'Call a function with a single argument, which is the main sequence'
     a = ast.Num(n=10)

@@ -215,6 +215,50 @@ class _translate_to_sequence(ast.NodeVisitor):
         l_func_body = ast.UnaryOp(op=node.op, operand=node.operand)
         self._connect_vertices(node, level, return_type, l_func_body, [v_o])
 
+    def visit_IfExp(self, node: ast.IfExp) -> None:
+        '''Process a python if expression operator.:
+
+        Args:
+            node (IfExp): AST operator
+        '''
+        # Make sure everything below us has a place in the graph
+        self.generic_visit(node)
+
+        a_test = node.test
+        a_body = node.body
+        a_orelse = node.orelse
+
+        v_test = _get_vertex_for_ast(self._g, a_test)
+        v_body = _get_vertex_for_ast(self._g, a_body)
+        v_orelse = _get_vertex_for_ast(self._g, a_orelse)
+
+        m_test = get_v_info(v_test)
+        m_body = get_v_info(v_body)
+        m_orelse = get_v_info(v_orelse)
+
+        # What level will this be operating at?
+        func_info = self._t_inspect.find_broadcast_level_for_args((bool, Union[float, int, str], Union[float, int, str]),
+                                                                  (m_test.v_type, m_body.v_type, m_orelse.v_type))
+        if func_info is None:
+            raise FuncADLTablesException('Types do not match for if expression. Test must be bool, and body and else must be float, int, or str.')
+
+        levels, (t_test, t_body, t_orelse) = func_info
+        level = max(levels)
+
+        # FIgure out the return type
+        if (t_body == str) or (t_orelse == str):
+            if t_body != t_orelse:
+                raise FuncADLTablesException('Both body types must be string in if expression if one is string!')
+            return_type = str
+        elif (t_body == float) or (t_orelse == float):
+            return_type = float
+        else:
+            return_type = int
+
+        # And build the statement that will do the transform.
+        l_func_body = ast.IfExp(test=a_test, body=a_body, orelse=a_orelse)
+        self._connect_vertices(node, level, return_type, l_func_body, [v_test, v_body, v_orelse])
+
     def visit_Compare(self, node: ast.Compare):
         '''Process a python Compare operator. We support:
 
