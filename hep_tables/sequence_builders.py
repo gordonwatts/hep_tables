@@ -1,7 +1,9 @@
 import ast
+from hep_tables.constant import Constant
+
 from hep_tables.util_graph import child_iterator_in_use, highest_used_order, vertex_iterator_indices
 from hep_tables.util_ast import astIteratorPlaceholder
-from typing import Iterable, List, Optional, Type, Union, cast
+from typing import Dict, Iterable, List, Optional, Type, Union, cast
 
 from dataframe_expressions.asts import ast_Callable, ast_DataFrame, ast_FunctionPlaceholder
 from dataframe_expressions.render_dataframe import render_callable, render_context
@@ -168,24 +170,9 @@ class _translate_to_sequence(ast.NodeVisitor):
         else:
             return_type = int
 
-        for i in range(level):
-            return_type = Iterable[return_type]
-
         # And build the statement that will do the transform.
         l_func_body = ast.BinOp(left=node.left, op=node.op, right=node.right)
-        s = expression_transform(l_func_body)
-
-        # Figure out if we are using the same index or not
-        left_index = vertex_iterator_indices(left)[0]
-
-        # Fix up the source order.
-        _fixup_vertex_order([left, right])
-
-        # Create the vertex and connect to a and b via edges
-        # We make, arbitrarily, the left sequence the main sequence (left is better!)
-        op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, {node: astIteratorPlaceholder(left_index)}))
-        self._g.add_edge(op_vertex, left, info=e_info(True))
-        self._g.add_edge(op_vertex, right, info=e_info(False))
+        self._connect_vertices(node, level, return_type, l_func_body, [left, right])
 
     def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:
         '''Visit a root of the tree. This will form the basis of all of the graph.
@@ -313,30 +300,117 @@ class _translate_to_sequence(ast.NodeVisitor):
         level_type_info = self._t_inspect.find_broadcast_level_for_args(arg_types, [m.v_type for m in arg_meta])
         if level_type_info is None:
             raise FuncADLTablesException(f'Do not know how to call {func_name}({arg_types}) with given argument ({[m.v_type for m in arg_meta]})')
-        levels, actual_args = level_type_info
-        if not all(levels[0] == lv for lv in levels) or any(levels[0] != m.level for m in arg_meta):
+        levels, _ = level_type_info
+
+        # To get the final level, we need to scan through non-constant arguments
+        non_const_args = [a for a in zip(arg_meta, levels) if not Constant.isconstant(a[0].v_type)]
+        non_const_levels = [a[1] for a in non_const_args]
+        level = non_const_levels[0] if len(non_const_levels) > 0 else 0
+
+        # Check that we have no implied loops here
+        if not all(non_const_levels[0] == lv for lv in non_const_levels) or any(level != m[0].level for m in non_const_args):
             raise FuncADLTablesException(f'In order to call {func_name}({arg_types}), all items need to have the same number of array dimensions.')
-        level = levels[0]
 
-        # Fix up the ordering of the arguments - not strictly necessary
-        # however, it does mean the code will always do things the same way.
-        _fixup_vertex_order(arg_vtx)
+        # Connect everything
+        self._connect_vertices(node, level, return_type, transform_body, arg_vtx)
 
-        # Ok - since this works, lets build the function.
-        seq = expression_transform(transform_body)
-        for i in range(level):
-            return_type = Iterable[return_type]  # type: ignore
-        v_i = v_info(level, seq, return_type, {node: astIteratorPlaceholder(vertex_iterator_indices(arg_vtx[0])[0])})
-        new_v = self._g.add_vertex(info=v_i)
+    def _connect_vertices(self, node: ast.AST, level: int, return_type: type, func_body: ast.AST, vertices: List[Vertex]):
+        '''Given an expression that is connected with a number of nodes, form the connections. Constants are properly dealt with.
 
-        main_seq = True
-        for v in arg_vtx:
-            assert get_v_info(v).level == level, 'TODO: Make sure this test case is covered for edge index'
-            self._g.add_edge(new_v, v, info=e_info(main_seq))
-            main_seq = False
+        The main sequence will be the first non-constant vertex given in `vertices.`
 
+        Level will the be the main sequence level's index.
 
-# TODO: Can we optimize this Call_Name or refactor it with some similar code in other places?
+        If all arguments are constants, then the new vertex is marked as a constant.
+
+        And evaluation order will be enforced by the order in `vertices`.
+
+        Args:
+            node (ast.AST): The node/ast that this is representing
+            level (int): The level that this node should run at
+            return_type (type): The type of this node. Converted to `Constant[return_type]` or `Iterable[...return_type]`
+                                depending.
+            func_body (ast.AST): The ast representing the function body. Put in an `expression_transform`
+            vertices (List[Vertex]): List of dependent vertices. Edges will be marked.
+
+        Returns:
+            [type]: [description]
+        '''
+        s = expression_transform(func_body)
+
+        # Go in order to find the first good vertex to give us a level
+        # and main sequence.
+        non_const_vert = [v for v in vertices if not Constant.isconstant(get_v_info(v).v_type)]
+        main_seq = non_const_vert[0] if len(non_const_vert) > 0 else None
+
+        main_dict: Optional[Dict[ast.AST, ast.AST]] = None
+        if main_seq is not None:
+            main_index = vertex_iterator_indices(main_seq)[0]
+            main_dict = {node: astIteratorPlaceholder(main_index)}
+        else:
+            main_index = 0
+            main_dict = {node: node}
+
+        # Fix up the return type
+        if main_seq is not None:
+            for i in range(level):
+                return_type = Iterable[return_type]  # type: ignore
+        else:
+            return_type = Constant[return_type]  # type: ignore
+
+        # Fix up the source order to make sure we evaluate them in a deterministic
+        # order.
+        _fixup_vertex_order(vertices)
+
+        # Create the vertex and connect to a and b via edges
+        # We make, arbitrarily, the left sequence the main sequence (left is better!)
+        op_vertex = self._g.add_vertex(info=v_info(level, s, return_type, main_dict))
+        for v in vertices:
+            if v in non_const_vert:
+                self._g.add_edge(op_vertex, v, info=e_info(v == main_seq))
+
+    def visit_Num(self, node: ast.Num):
+        '''Translate a constant into a node for later use.
+
+        Constants are funny - they will be "absorbed" down the line, rather than
+        being part of the graph as we go. However, we place them as part of the graph
+        so they fit in with the rest of the processing.
+
+        In this sense the level doesn't really matter - so we set it as zero here. But it should
+        be ignored. Key is the type - which is Constant[xxx], which marks this as a constant number,
+        which is good at any level in subsequent argument resolution.
+
+        Args:
+            node (ast.Num): The number
+        '''
+        i = node.n
+        if isinstance(i, float):
+            t = float
+        elif isinstance(i, int):
+            t = int
+        else:
+            raise FuncADLTablesException(f'Do not know how to deal with a number of type {type(i)}')
+
+        v_i = v_info(0, expression_transform(node), Constant[t], {}, 0)  # type: ignore
+        self._g.add_vertex(info=v_i)
+
+    def visit_Str(self, node: ast.Num):
+        '''Translate a constant into a node for later use.
+
+        Constants are funny - they will be "absorbed" down the line, rather than
+        being part of the graph as we go. However, we place them as part of the graph
+        so they fit in with the rest of the processing.
+
+        In this sense the level doesn't really matter - so we set it as zero here. But it should
+        be ignored. Key is the type - which is Constant[xxx], which marks this as a constant number,
+        which is good at any level in subsequent argument resolution.
+
+        Args:
+            node (ast.Num): The number
+        '''
+        v_i = v_info(0, expression_transform(node), Constant[str], {}, 0)  # type: ignore
+        self._g.add_vertex(info=v_i)
+
 
 def _get_vertex_for_ast(g: Graph, node: ast.AST) -> Vertex:
     v_list = list(g.vs.select(lambda v: get_v_info(v).node is node))

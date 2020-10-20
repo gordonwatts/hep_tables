@@ -1,4 +1,5 @@
 import ast
+from hep_tables.constant import Constant
 from hep_tables.util_ast import astIteratorPlaceholder
 from typing import Callable, Iterable, List, Optional, Type, Union
 
@@ -116,6 +117,25 @@ def test_xaod_table_not_xaod_table(mocker):
     a = ast_DataFrame(df)
     with pytest.raises(FuncADLTablesException):
         ast_to_graph(a, g, t_mock)
+
+
+@pytest.mark.parametrize("a, c_type", [
+                         (ast.Num(n=1), int),
+                         (ast.Num(n=1.2), float),
+                         (ast.Str(s="hi there"), str),
+                         ])
+def test_constant(mocker, a, c_type):
+    'Make sure we make the proper type for each'
+    g = Graph(directed=True)
+    t_mock = mocker.MagicMock(spec=type_inspector)
+
+    g = ast_to_graph(a, g, t_mock)
+
+    assert len(g.vs()) == 1
+    v = list(g.vs())[0]
+    v_info = get_v_info(v)
+
+    assert v_info.v_type == Constant[c_type]
 
 
 def test_attribute_known_list(mocker):
@@ -524,6 +544,67 @@ def test_binary_event_constant(mocker):
                                                             (Iterable[float], Iterable[Iterable[float]]))
 
 
+@pytest.mark.parametrize("a, a_is_const, b, b_is_const, operator, result_string", [
+                         (ast.Name(id='a'), False, ast.Num(n=10), True, ast.Add, 'a+10'),
+                         (ast.Num(n=10), True, ast.Name(id='a'), False, ast.Add, '10+a'),
+                         (ast.Num(n=10), True, ast.Num(n=20), True, ast.Add, '10+20'),
+                         ])
+def test_binary_op_constant(a: ast.AST, a_is_const: bool, b: ast.AST, b_is_const: bool, operator, result_string, mocker):
+    'Test the binary operators'
+    op = ast.BinOp(left=a, right=b, op=operator())
+
+    if a_is_const:
+        a_type = Constant[float]
+        a_dict = {a: a}
+        a_level = 0
+    else:
+        a_type = Iterable[float]
+        a_dict = {a: astIteratorPlaceholder(1)}
+        a_level = 1
+    if b_is_const:
+        b_type = Constant[float]
+        b_dict = {b: b}
+        b_level = 0
+    else:
+        b_type = Iterable[float]
+        b_dict = {b: astIteratorPlaceholder(1)}
+        b_level = 1
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(a_level, mocker.MagicMock(spec=sequence_predicate_base), a_type, a_dict))
+    g.add_vertex(info=v_info(b_level, mocker.MagicMock(spec=sequence_predicate_base), b_type, b_dict))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    # Determine the type for each one
+    t_mock.find_broadcast_level_for_args.return_value = ((a_level, b_level), (float, float))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 3
+    new_v = list(g.vs())[-1]
+    op_v = get_v_info(new_v)
+
+    if (not a_is_const) or (not b_is_const):
+        assert op_v.v_type == Iterable[float]
+        assert op_v.level == 1
+        assert len(op_v.node_as_dict) == 1
+        assert isinstance(list(op_v.node_as_dict.values())[0], astIteratorPlaceholder)
+        assert len(new_v.out_edges()) == 1
+    else:
+        assert op_v.v_type == Constant[float]
+        assert op_v.level == 0
+        assert len(op_v.node_as_dict) == 1
+        assert not isinstance(list(op_v.node_as_dict.values())[0], astIteratorPlaceholder)
+        assert len(new_v.out_edges()) == 0
+
+    assert op_v.node is op
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST(result_string) \
+        == seq.render_ast({})
+
+
 def test_binary_bad_type(mocker):
     'Test binary operator: Iterable[Iterable[float]] + Iterable[Iterable[Jet]]'
     a = ast.Num('a')
@@ -623,6 +704,38 @@ def test_function_single_arg(mocker):
     assert len(v.out_edges()) == 1
 
 
+def test_function_const_arg(mocker):
+    'Call a function with a single argument, which is the main sequence'
+    a = ast.Num(n=10)
+    c = ast.Call(func=ast.Name(id='my_func'), args=[a], keywords=[])
+
+    g = Graph(directed=True)
+    g['info'] = g_info([])
+    g.add_vertex(info=v_info(0, mocker.MagicMock(spec=sequence_predicate_base), Constant[float], {a: a}))  # type: ignore
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = Callable[[float], float]
+    t_mock.callable_type.return_value = ([float], float)
+    t_mock.find_broadcast_level_for_args.return_value = ((0,), (float,))
+
+    ast_to_graph(c, g, t_mock)
+
+    assert len(g.vs()) == 2
+    v = list(g.vs())[1]
+    call_v = get_v_info(v)
+
+    assert call_v.v_type == Constant[float]  # type: ignore
+    assert call_v.node is c
+    assert call_v.level == 0
+
+    seq = call_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("my_func(10)") \
+        == seq.render_ast({})
+
+    assert len(v.out_edges()) == 0
+
+
 def test_function_two_arg(mocker):
     a = ast.Name('a')
     b = ast.Name('b')
@@ -654,6 +767,36 @@ def test_function_two_arg(mocker):
 
     # Check the order
     assert get_v_info(v_a).order < get_v_info(v_b).order
+
+
+def test_function_two_arg_one_const(mocker):
+    a = ast.Num(n=10)
+    b = ast.Name('b')
+    c = ast.Call(func=ast.Name(id='my_func'), args=[a, b], keywords=[])
+
+    g = Graph(directed=True)
+    g['info'] = g_info([])
+    v_a = g.add_vertex(info=v_info(0, mocker.MagicMock(spec=sequence_predicate_base), Constant[float], {a: ast.Num(n=10)}))
+    v_b = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.static_function_type.return_value = Callable[[float, float], float]
+    t_mock.callable_type.return_value = ([float, float], float)
+    t_mock.find_broadcast_level_for_args.return_value = ((0, 1), (float, float))
+
+    ast_to_graph(c, g, t_mock)
+
+    assert len(g.vs()) == 3
+    call_v = get_v_info(list(g.vs())[-1])
+
+    assert call_v.v_type == Iterable[float]
+    assert call_v.node is c
+    assert call_v.level == 1
+
+    seq = call_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST("my_func(10, b)") \
+        == seq.render_ast({})
 
 
 def test_function_single_arg_level2(mocker):

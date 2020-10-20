@@ -1,3 +1,4 @@
+from hep_tables.constant import Constant
 from typing import Callable, Iterable, Union
 
 import pytest
@@ -60,6 +61,7 @@ def test_callable_args_method():
 @pytest.mark.parametrize("defined_args, actual_args, level, result",
                          [
                              ((float,), (float,), (0,), (float,)),
+                             ((float,), (Constant[float],), (0,), (float,)),  # type:ignore
                              ((float,), (Iterable[float],), (1,), (float,)),
                              ((float,), (Iterable[Iterable[float]],), (2,), (float,)),
                              ((Iterable[float],), (Iterable[float],), (0,), (Iterable[float],)),
@@ -67,9 +69,11 @@ def test_callable_args_method():
                              ((Union[int, float],), (Iterable[float],), (1,), (float,)),
                              ((Union[int, float],), (int,), (0,), (int,)),
                              ((float, float), (Iterable[float], Iterable[float]), (1, 1), (float, float)),
+                             ((float, float), (Constant[float], Iterable[float]), (0, 1), (float, float)),  # type:ignore
                              ((float, float), (Iterable[float], float), (1, 0), (float, float)),
                              ((float, float), (float, Iterable[float]), (0, 1), (float, float)),
                              ((float, float), (Iterable[float], Iterable[Iterable[float]]), (1, 2), (float, float)),
+                             ((float, float), (Constant[float], Iterable[Iterable[Iterable[float]]]), (0, 3), (float, float)),  # type:ignore
                          ])
 def test_find_broadcast_good(defined_args, actual_args, level, result):
     assert type_inspector().find_broadcast_level_for_args(defined_args, actual_args) == (level, result)
@@ -84,6 +88,7 @@ def test_find_broadcast_good(defined_args, actual_args, level, result):
                              ((float, float), (Iterable[Iterable[float]], Iterable[Iterable[Iterable[float]]])),
                              ((float, float, float), (float, Iterable[float], Iterable[Iterable[float]])),
                              ((float, float, float), (float, Iterable[Iterable[float]], Iterable[Iterable[Iterable[float]]])),
+                             ((Iterable[float],), (Constant[float],)),  # type:ignore
                          ])
 def test_find_broadcast_bad(defined_args, actual_args):
     assert type_inspector().find_broadcast_level_for_args(defined_args, actual_args) is None

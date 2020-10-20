@@ -1,3 +1,4 @@
+from hep_tables.constant import Constant
 import inspect
 import logging
 from typing import Callable, Iterable, List, Optional, Set, Tuple, Type, Union
@@ -114,35 +115,6 @@ class type_inspector:
 
         return (arg_types, return_type)
 
-    def _possible_types(self, t: Type) -> Set[Type]:
-        '''Explode things like Union
-
-        Args:
-            t (Type): The type to examine.
-
-        Returns:
-            (type): The list of all types that that this type can represent. If this is `Union[float, int]` return the
-            set of the two.
-        '''
-        if type(t).__name__ == '_GenericAlias':
-            if t.__origin__ == Union:  # type: ignore
-                return set(t.__args__)  # type: ignore
-        r = set()
-        r.add(t)
-        return r
-
-    def _compare_simple_types(self, defined: Type, actual: Type):
-        '''Determine if two non-deep types are comabible.
-
-        Args:
-            defined (Type): The first type of the two to compare
-            actual (Type): The second type to compare
-        '''
-        d_set = self._possible_types(defined)
-        a_set = self._possible_types(actual)
-
-        return len(d_set & a_set) > 0
-
     def find_broadcast_level_for_args(self, defined_args: Iterable[Type], actual: Iterable[Type]) \
             -> Optional[Tuple[Tuple[int], Iterable[Type]]]:
         '''Return the level to broadcast for each argument and
@@ -165,6 +137,7 @@ class type_inspector:
                  (Iterable[float], Iterable[Iterable[float]]).
               1. But unmatched inputs are only ok if they occur at the first level. This is because
                  otherwise the user code gets very hard to understand.
+              1. Constant[X] is a constant that can be in at "any level" for a float, but will not match Iterable
             - TODO: With the `map` function it should be ok to get around this above item, but that isn't
               implemented yet.
         '''
@@ -179,8 +152,13 @@ class type_inspector:
             return None
 
         # Make sure there is a legal difference
-        min_level = min(lv[0] for lv in levels_to_match)
-        max_level = max(lv[0] for lv in levels_to_match)
+        non_const_levels_to_match = [lv[0] for lv in zip(levels_to_match, t_actual) if not Constant.isconstant(lv[1])]
+        if len(non_const_levels_to_match) > 0:
+            min_level = min(lv[0] for lv in non_const_levels_to_match)
+            max_level = max(lv[0] for lv in non_const_levels_to_match)
+        else:
+            # All arguments are constants!
+            min_level = max_level = 0
 
         if (max_level - min_level) > 1:
             return None
@@ -223,7 +201,7 @@ class type_inspector:
         '''
         # Are the types compatible at this level?
         if self._compare_simple_types(t_defined, t_actual):
-            return 0, t_actual
+            return 0, self._unwrap_type(t_actual)
 
         # Now see if we can take the type down one an find it.
         a = self.iterable_object(t_actual)
@@ -235,3 +213,50 @@ class type_inspector:
         if r is None:
             return None
         return r[0] + 1, r[1]
+
+    def _unwrap_type(self, t: Type) -> Type:
+        '''Unwrap a type if it is hidden (e.g. const)
+
+        Args:
+            t (Type): Incoming type
+
+        Returns:
+            Type: Unwrapped type, or the original type
+        '''
+        if Constant.isconstant(t):
+            return Constant.constanttype(t)
+        return t
+
+    def _possible_types(self, t: Type) -> Set[Type]:
+        '''Explode things like Union and Constant
+
+        Args:
+            t (Type): The type to examine.
+
+        Returns:
+            (type): The list of all types that that this type can represent. If this is `Union[float, int]` return the
+            set of the two.
+        '''
+        if type(t).__name__ == '_GenericAlias':
+            if t.__origin__ == Union:  # type: ignore
+                return set(t.__args__)  # type: ignore
+        r = set()
+        if Constant.isconstant(t):
+            r.add(Constant.constanttype(t))
+            return r
+
+        # Go with a plane type here.
+        r.add(t)
+        return r
+
+    def _compare_simple_types(self, defined: Type, actual: Type):
+        '''Determine if two non-deep types are comabible.
+
+        Args:
+            defined (Type): The first type of the two to compare
+            actual (Type): The second type to compare
+        '''
+        d_set = self._possible_types(defined)
+        a_set = self._possible_types(actual)
+
+        return len(d_set & a_set) > 0
