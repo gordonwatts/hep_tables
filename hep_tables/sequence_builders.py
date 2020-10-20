@@ -219,6 +219,35 @@ class _translate_to_sequence(ast.NodeVisitor):
         l_func_body = ast.Compare(left=n_left, ops=[comp_op], comparators=[n_right])
         self._connect_vertices(node, level, bool, l_func_body, [left, right])
 
+    def visit_BoolOp(self, node: ast.BoolOp):
+        '''Process a python Bool operator. We support:
+
+            - and
+            - or
+
+        Args:
+            node (Compare): AST operator
+        '''
+        # Make sure everything below us has a place in the graph
+        for n in node.values:
+            self.visit(n)
+
+        vertices = [_get_vertex_for_ast(self._g, a) for a in node.values]
+        v_meta = [get_v_info(v) for v in vertices]
+
+        # What level will this be operating at?
+        func_info = self._t_inspect.find_broadcast_level_for_args(tuple(bool for _ in v_meta),
+                                                                  tuple(m.v_type for m in v_meta))
+        if func_info is None:
+            raise FuncADLTablesException(f'All types are not bool for {node.op} logical operator! {[v.v_type for v in v_meta]}.')
+
+        levels, _ = func_info
+        level = max(levels)
+
+        # And build the statement that will do the transform.
+        l_func_body = ast.BoolOp(op=node.op, values=list(node.values))
+        self._connect_vertices(node, level, bool, l_func_body, vertices)
+
     def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:
         '''Visit a root of the tree. This will form the basis of all of the graph.
 

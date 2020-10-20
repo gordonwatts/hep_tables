@@ -799,6 +799,90 @@ def test_compare_multi_term(mocker):
     assert 'unsupported' in str(e.value).lower()
 
 
+@pytest.mark.parametrize("operator, sym", [
+                         (ast.And, "and"),
+                         (ast.Or, "or"),
+                         ])
+def test_binary_operator(operator, sym, mocker):
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.BoolOp(op=operator(), values=[a, b])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {b: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (bool, bool))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 3
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[bool]
+    assert op_v.node is op
+    assert op_v.level == 1
+    assert MatchASTDict({op: astIteratorPlaceholder(1)}) == op_v.node_as_dict
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST(f"e1000 {sym} e2000") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
+
+
+@pytest.mark.parametrize("operator, sym", [
+                         (ast.And, "and"),
+                         (ast.Or, "or"),
+                         ])
+def test_binary_operator_3(operator, sym, mocker):
+    a = ast.Name('a')
+    b = ast.Name('b')
+    c = ast.Name('b')
+    op = ast.BoolOp(op=operator(), values=[a, b, c])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {b: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {c: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1,), (bool, bool, bool))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 4
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[bool]
+    assert op_v.node is op
+    assert op_v.level == 1
+    assert MatchASTDict({op: astIteratorPlaceholder(1)}) == op_v.node_as_dict
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST(f"e1000 {sym} e2000 {sym} e3000") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000'), c: ast.Name(id='e3000')})
+
+
+def test_binary_operator_bad_type(mocker):
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.BoolOp(op=ast.And(), values=[a, b])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[str], {b: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert "bool" in str(e.value).lower()
+
+
 def test_function_single_arg(mocker):
     'Call a function with a single argument, which is the main sequence'
     a = ast.Name('a')
