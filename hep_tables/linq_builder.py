@@ -5,9 +5,9 @@ from typing import Dict, Optional
 from func_adl.object_stream import ObjectStream
 from igraph import Graph
 
-from hep_tables.graph_info import get_e_info, get_v_info
+from hep_tables.graph_info import get_v_info
 from hep_tables.transforms import sequence_predicate_base
-from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge
+from hep_tables.util_graph import depth_first_traversal
 
 
 def build_linq_expression(exp_graph: Graph) -> ObjectStream:
