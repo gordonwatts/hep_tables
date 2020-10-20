@@ -1,4 +1,5 @@
 import ast
+
 from hep_tables.constant import Constant
 from hep_tables.util_ast import astIteratorPlaceholder
 from typing import Callable, Dict, Iterable, List, Optional, Type, Union
@@ -881,6 +882,78 @@ def test_binary_operator_bad_type(mocker):
         ast_to_graph(op, g, t_mock)
 
     assert "bool" in str(e.value).lower()
+
+
+@pytest.mark.parametrize("operator, sym, o_type", [
+                         (ast.UAdd, "+", float),
+                         (ast.UAdd, "+", int),
+                         (ast.USub, "-", float),
+                         (ast.USub, "-", int),
+                         (ast.Not, "not", bool),
+                         ])
+def test_unary_operator(operator, sym, o_type, mocker):
+    a = ast.Name('a')
+    op = ast.UnaryOp(op=operator(), operand=a)
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {a: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1,), (o_type,))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 2
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[o_type]
+    assert op_v.node is op
+    assert op_v.level == 1
+    assert MatchASTDict({op: astIteratorPlaceholder(1)}) == op_v.node_as_dict
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST(f"{sym} e1000") \
+        == seq.render_ast({a: ast.Name(id='e1000')})
+
+
+@pytest.mark.parametrize("operator, o_type, c_type", [
+                         (ast.UAdd, bool, Union[float, int]),
+                         (ast.USub, bool, Union[float, int]),
+                         (ast.Not, int, bool),
+                         (ast.Not, float, bool),
+                         ])
+def test_unary_perator_bad_type(operator, o_type, c_type, mocker):
+    a = ast.Name('a')
+    op = ast.UnaryOp(op=operator(), operand=a)
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[o_type], {a: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert "unsupported type" in str(e.value).lower()
+    t_mock.find_broadcast_level_for_args.assert_called_with((c_type,), (Iterable[o_type],))
+
+
+def test_unary_invert_not_allowed(mocker):
+    a = ast.Name('a')
+    op = ast.UnaryOp(op=ast.Invert(), operand=a)
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {a: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert "invert" in str(e.value).lower()
 
 
 def test_function_single_arg(mocker):

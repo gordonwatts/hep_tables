@@ -174,6 +174,47 @@ class _translate_to_sequence(ast.NodeVisitor):
         l_func_body = ast.BinOp(left=node.left, op=node.op, right=node.right)
         self._connect_vertices(node, level, return_type, l_func_body, [left, right])
 
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> None:
+        '''Process a python Unary operator. We support:
+
+            - +
+            - -
+            - not
+
+        Args:
+            node (UnaryOp): AST operator
+        '''
+        if isinstance(node.op, ast.Invert):
+            raise FuncADLTablesException('Unsupported unary operator: Invert')
+
+        # Make sure everything below us has a place in the graph
+        self.visit(node.operand)
+
+        v_o = _get_vertex_for_ast(self._g, node.operand)
+        meta_o = get_v_info(v_o)
+
+        # What level will this be operating at?
+        if isinstance(node.op, (ast.UAdd, ast.USub)):
+            func_info = self._t_inspect.find_broadcast_level_for_args((Union[float, int],),
+                                                                      (meta_o.v_type,))
+        else:
+            func_info = self._t_inspect.find_broadcast_level_for_args((bool,),
+                                                                      (meta_o.v_type,))
+        if func_info is None:
+            raise FuncADLTablesException(f'Unsupported type for unary operator: {node.op} {meta_o.v_type}.')
+
+        levels, (r_type, ) = func_info
+        level = max(levels)
+
+        if isinstance(node.op, (ast.UAdd, ast.USub)):
+            return_type = r_type
+        else:
+            return_type = bool
+
+        # And build the statement that will do the transform.
+        l_func_body = ast.UnaryOp(op=node.op, operand=node.operand)
+        self._connect_vertices(node, level, return_type, l_func_body, [v_o])
+
     def visit_Compare(self, node: ast.Compare):
         '''Process a python Compare operator. We support:
 
