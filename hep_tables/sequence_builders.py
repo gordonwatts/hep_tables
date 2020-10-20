@@ -174,6 +174,51 @@ class _translate_to_sequence(ast.NodeVisitor):
         l_func_body = ast.BinOp(left=node.left, op=node.op, right=node.right)
         self._connect_vertices(node, level, return_type, l_func_body, [left, right])
 
+    def visit_Compare(self, node: ast.Compare):
+        '''Process a python Compare operator. We support:
+
+            - <
+            - <=
+            - ==
+            - !=
+            - >
+            - >=
+
+        Args:
+            node (Compare): AST operator
+        '''
+        if len(node.ops) != 1:
+            raise FuncADLTablesException(f'Unsupported comparison operator - can only work with 2 term comparisons - found {len(node.ops)}.')
+        comp_op = node.ops[0]
+        if isinstance(comp_op, (ast.Is, ast.IsNot, ast.In, ast.NotIn)):
+            raise FuncADLTablesException(f'Unsupported comparison operator "{comp_op}".')
+
+        # Make sure everything below us has a place in the graph
+        n_left = node.left
+        n_right = node.comparators[0]
+        self.visit(n_left)
+        self.visit(n_right)
+
+        left = _get_vertex_for_ast(self._g, n_left)
+        left_meta = get_v_info(left)
+        right = _get_vertex_for_ast(self._g, n_right)
+        right_meta = get_v_info(right)
+
+        # What level will this be operating at?
+        func_info = self._t_inspect.find_broadcast_level_for_args((Union[float, int], Union[float, int]),
+                                                                  (left_meta.v_type, right_meta.v_type))
+        if func_info is None:
+            raise FuncADLTablesException(f'Operator {comp_op} is unsupported in {left_meta.v_type} {comp_op} {right_meta.v_type}.')
+
+        levels, (l_type, r_type) = func_info
+        max_level = max(levels)
+        assert max_level == left_meta.level or max_level == right_meta.level, 'TODO: implied loops in binary ops not yet tested'
+        level = max_level
+
+        # And build the statement that will do the transform.
+        l_func_body = ast.Compare(left=n_left, ops=[comp_op], comparators=[n_right])
+        self._connect_vertices(node, level, bool, l_func_body, [left, right])
+
     def visit_ast_DataFrame(self, node: ast_DataFrame) -> None:
         '''Visit a root of the tree. This will form the basis of all of the graph.
 

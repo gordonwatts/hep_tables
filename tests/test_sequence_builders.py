@@ -670,6 +670,135 @@ def test_binary_types(t_left, operator, t_right, t_result, mocker):
     assert op_v.v_type == Iterable[t_result]
 
 
+@pytest.mark.parametrize("operator, sym", [
+                         (ast.Eq, '=='),
+                         (ast.NotEq, '!='),
+                         (ast.Gt, '>'),
+                         (ast.GtE, '>='),
+                         (ast.Lt, '<'),
+                         (ast.LtE, '<=')
+                         ])
+def test_compare_op(operator, sym, mocker):
+    'Test the comparison operators operators'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.Compare(left=a, ops=[operator()], comparators=[b])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (float, float))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 3
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[bool]
+    assert op_v.node is op
+    assert op_v.level == 1
+    assert MatchASTDict({op: astIteratorPlaceholder(1)}) == op_v.node_as_dict
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert MatchAST(f"e1000 {sym} e2000") \
+        == seq.render_ast({a: ast.Name(id='e1000'), b: ast.Name(id='e2000')})
+
+
+@pytest.mark.parametrize("l_type, r_type", [
+                         (float, float),
+                         (int, int),
+                         (float, int),
+                         (int, float),
+                         ])
+def test_compare_op_types(l_type, r_type, mocker):
+    'Test the comparison operators operators type comparisons'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.Compare(left=a, ops=[ast.Gt()], comparators=[b])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[l_type], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[r_type], {b: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (l_type, r_type))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 3
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[bool]
+
+
+@pytest.mark.parametrize("operator", [
+                         (ast.In),
+                         (ast.NotIn),
+                         (ast.Is),
+                         (ast.IsNot),
+                         ])
+def test_compare_op_bad(operator, mocker):
+    'Do not support these operators'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.Compare(left=a, ops=[operator()], comparators=[b])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (float, float))
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert 'unsupported' in str(e.value).lower()
+
+
+def test_compare_op_types_bad(mocker):
+    'Test the comparison operators operators type comparisons'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    op = ast.Compare(left=a, ops=[ast.Gt()], comparators=[b])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[str], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert 'unsupported' in str(e.value).lower()
+
+
+def test_compare_multi_term(mocker):
+    'We are not coded up to deal with multi-term compares yet'
+    a = ast.Name('a')
+    b = ast.Name('b')
+    c = ast.Name('c')
+    op = ast.Compare(left=a, ops=[ast.Gt(), ast.Lt()], comparators=[b, c])
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {a: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {c: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1, 1), (float, float, float))
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert 'unsupported' in str(e.value).lower()
+
+
 def test_function_single_arg(mocker):
     'Call a function with a single argument, which is the main sequence'
     a = ast.Name('a')
