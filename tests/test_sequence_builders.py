@@ -1,7 +1,7 @@
 import ast
 from hep_tables.constant import Constant
 from hep_tables.util_ast import astIteratorPlaceholder
-from typing import Callable, Iterable, List, Optional, Type, Union
+from typing import Callable, Dict, Iterable, List, Optional, Type, Union
 
 import pytest
 from dataframe_expressions.asts import (ast_Callable, ast_DataFrame,
@@ -135,7 +135,7 @@ def test_constant(mocker, a, c_type):
     v = list(g.vs())[0]
     v_info = get_v_info(v)
 
-    assert v_info.v_type == Constant[c_type]
+    assert v_info.v_type == Constant[c_type]  # type: ignore
 
 
 def test_attribute_known_list(mocker):
@@ -554,16 +554,16 @@ def test_binary_op_constant(a: ast.AST, a_is_const: bool, b: ast.AST, b_is_const
     op = ast.BinOp(left=a, right=b, op=operator())
 
     if a_is_const:
-        a_type = Constant[float]
-        a_dict = {a: a}
+        a_type = Constant[float]  # type: ignore
+        a_dict: Dict[ast.AST, ast.AST] = {a: a}
         a_level = 0
     else:
         a_type = Iterable[float]
         a_dict = {a: astIteratorPlaceholder(1)}
         a_level = 1
     if b_is_const:
-        b_type = Constant[float]
-        b_dict = {b: b}
+        b_type = Constant[float]  # type: ignore
+        b_dict: Dict[ast.AST, ast.AST] = {b: b}
         b_level = 0
     else:
         b_type = Iterable[float]
@@ -591,7 +591,7 @@ def test_binary_op_constant(a: ast.AST, a_is_const: bool, b: ast.AST, b_is_const
         assert isinstance(list(op_v.node_as_dict.values())[0], astIteratorPlaceholder)
         assert len(new_v.out_edges()) == 1
     else:
-        assert op_v.v_type == Constant[float]
+        assert op_v.v_type == Constant[float]  # type: ignore
         assert op_v.level == 0
         assert len(op_v.node_as_dict) == 1
         assert not isinstance(list(op_v.node_as_dict.values())[0], astIteratorPlaceholder)
@@ -776,8 +776,8 @@ def test_function_two_arg_one_const(mocker):
 
     g = Graph(directed=True)
     g['info'] = g_info([])
-    v_a = g.add_vertex(info=v_info(0, mocker.MagicMock(spec=sequence_predicate_base), Constant[float], {a: ast.Num(n=10)}))
-    v_b = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(0, mocker.MagicMock(spec=sequence_predicate_base), Constant[float], {a: ast.Num(n=10)}))  # type: ignore
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {b: astIteratorPlaceholder(1)}))
 
     t_mock = mocker.MagicMock(spec=type_inspector)
     t_mock.static_function_type.return_value = Callable[[float, float], float]

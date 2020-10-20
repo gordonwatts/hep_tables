@@ -58,4 +58,4 @@ class Constant(metaclass=ConstantMeta):
         Returns:
             Type: The type we are getting back.
         '''
-        return c.type
+        return c.type  # type: ignore
