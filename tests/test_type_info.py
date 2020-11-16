@@ -1,5 +1,5 @@
 from hep_tables.constant import Constant
-from typing import Callable, Iterable, Union
+from typing import Any, Callable, Iterable, Union
 
 import pytest
 from hep_tables.type_info import type_inspector
@@ -58,12 +58,19 @@ def test_callable_args_method():
 # TODO: Make sure other raise NotImplementedError's are ok to remain as such.
 
 
+class Jet:
+    'Used as a test object for type finding'
+    pass
+
 @pytest.mark.parametrize("defined_args, actual_args, level, result",
                          [
                              ((float,), (float,), (0,), (float,)),
+                             ((Any,), (float,), (0,), (float,)),
+                             ((Any,), (Jet,), (0,), (Jet,)),
                              ((float,), (Constant[float],), (0,), (float,)),  # type:ignore
                              ((float,), (Iterable[float],), (1,), (float,)),
                              ((float,), (Iterable[Iterable[float]],), (2,), (float,)),
+                             ((Any,), (Iterable[Iterable[float]],), (2,), (float,)),
                              ((Iterable[float],), (Iterable[float],), (0,), (Iterable[float],)),
                              ((Union[int, float],), (float,), (0,), (float,)),
                              ((Union[int, float],), (Iterable[float],), (1,), (float,)),
@@ -71,6 +78,7 @@ def test_callable_args_method():
                              ((float, float), (Iterable[float], Iterable[float]), (1, 1), (float, float)),
                              ((float, float), (Constant[float], Iterable[float]), (0, 1), (float, float)),  # type:ignore
                              ((float, float), (Iterable[float], float), (1, 0), (float, float)),
+                             ((Any, float), (Iterable[float], float), (1, 0), (float, float)),
                              ((float, float), (float, Iterable[float]), (0, 1), (float, float)),
                              ((float, float), (Iterable[float], Iterable[Iterable[float]]), (1, 2), (float, float)),
                              ((float, float), (Constant[float], Iterable[Iterable[Iterable[float]]]), (0, 3), (float, float)),  # type:ignore

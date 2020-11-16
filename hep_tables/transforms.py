@@ -14,8 +14,9 @@ class expression_predicate_base(ABC):
     '''Base class for all expressions we use to assemble an func_adl expression.
     Everything should derive from this.
     '''
-    def __init__(self, skip_iterators: List[int] = []):
+    def __init__(self, skip_iterators: List[int] = [], is_filter: bool = False):
         self._skip_iterators = skip_iterators
+        self._is_filter = is_filter
 
     @property
     def skip_iterators(self) -> List[int]:
@@ -25,6 +26,15 @@ class expression_predicate_base(ABC):
             List[int]: Iterator indices to skip
         '''
         return self._skip_iterators
+
+    @property
+    def is_filter(self) -> bool:
+        '''Returns true if this expression should be treated as a filter.
+
+        Returns:
+            bool: True if this expression represents a filter, false otherwise.
+        '''
+        return self._is_filter
 
     @abstractmethod
     def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
@@ -42,13 +52,13 @@ class expression_predicate_base(ABC):
 class expression_transform(expression_predicate_base):
     '''A simple expression, function call, etc.
     '''
-    def __init__(self, exp: ast.AST, skip_iterators: List[int] = []):
+    def __init__(self, exp: ast.AST, skip_iterators: List[int] = [], is_filter: bool = False):
         '''Initialize with an expression.
 
         Args:
             exp (ast.AST): The expression this object should hold onto
         '''
-        super().__init__(skip_iterators)
+        super().__init__(skip_iterators, is_filter)
         self._exp = exp
 
     def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
@@ -179,7 +189,10 @@ class sequence_downlevel(sequence_predicate_base):
         sub_expr = self._transform.render_ast(downlevel_dict)
 
         select_func = lambda_build(self._var_name, replace_holder(self._id, self._var_name).visit(sub_expr))
-        return sequence.Select(select_func)
+        if self._transform.is_filter:
+            return sequence.Where(select_func)
+        else:
+            return sequence.Select(select_func)
 
     def render_ast(self, ast_replacements: Dict[ast.AST, ast.AST]) -> ast.AST:
         '''Do a rendering of the sequence as an expression.

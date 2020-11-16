@@ -73,6 +73,26 @@ def test_collect_pts(servicex_ds):
                                ) == extract_selection(servicex_ds)
 
 
+def test_collect_filtered_pts(servicex_ds):
+    'Two level test going from xaod_table to a qastle query: integration test'
+
+    f = ServiceXDatasetSource(servicex_ds)
+    df = xaod_table(f, table_type_info=AnEvent)
+    seq = df.jets[df.jets.pt > 30].pt
+
+    a = _new_make_local(seq)
+    assert a is not None
+    assert len(a) == 283458
+
+    assert MatchQastleSequence(lambda f: f
+                               .Select("lambda e1: e1.jets()")
+                               .Select("lambda e3: e3.Select(lambda j1: (j1, j1.pt()))")
+                               .Select("lambda e3: e3.Select(lambda j1: (j1[0], j1[1] > 30))")
+                               .Select("lambda e3: e3.Where(lambda j1: j[1])")
+                               .Select("lambda e3: e3.Select(lambda j1: j1[0].pt())")
+                               ) == extract_selection(servicex_ds)
+
+
 def test_collect_sum_jet(servicex_ds):
     'Two level test going from xaod_table to a qastle query: integration test'
 

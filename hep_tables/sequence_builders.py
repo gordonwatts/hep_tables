@@ -3,10 +3,10 @@ from hep_tables.constant import Constant
 
 from hep_tables.util_graph import child_iterator_in_use, highest_used_order, vertex_iterator_indices
 from hep_tables.util_ast import astIteratorPlaceholder
-from typing import Dict, Iterable, List, Optional, Type, Union, cast
+from typing import Any, Dict, Iterable, List, Optional, Type, Union, cast
 
 from dataframe_expressions.asts import ast_Callable, ast_DataFrame, ast_FunctionPlaceholder
-from dataframe_expressions.render_dataframe import render_callable, render_context
+from dataframe_expressions.render_dataframe import ast_Filter, render_callable, render_context
 from igraph import Graph, Vertex  # type: ignore
 
 from hep_tables.exceptions import FuncADLTablesException
@@ -355,6 +355,32 @@ class _translate_to_sequence(ast.NodeVisitor):
                                        Iterable[df.table_type],  # type: ignore
                                        {node: astIteratorPlaceholder(get_g_info(self._g).next_iter_index())}))
 
+    def visit_ast_Filter(self, node: ast_Filter):
+        '''We are filtering a sequence here. The filter is evaluated "on the side",
+        and the expression is passed through.
+
+        Args:
+            node (ast_Filter): The ast node representing the filter
+        '''
+        self.generic_visit(node)
+        a_expr = cast(ast.AST, node.expr)
+        a_filter = cast(ast.AST, node.filter)
+
+        v_expr = _get_vertex_for_ast(self._g, a_expr)
+        v_filter = _get_vertex_for_ast(self._g, a_filter)
+        m_expr = get_v_info(v_expr)
+        m_filter = get_v_info(v_filter)
+
+        # Check inputs, get at what level this is operating.
+        func_info = self._t_inspect.find_broadcast_level_for_args((bool, Any), (m_filter.v_type, m_expr.v_type))
+        if func_info is None:
+            raise FuncADLTablesException(f'Where expression must evaluate to type bool, not {m_filter.v_type}')
+        levels, (_, return_type) = func_info
+        level = levels[0]
+
+        # Hook everything up.
+        self._connect_vertices(node, level, return_type, a_expr, [v_expr, v_filter], is_filter=True)
+
     def visit_Call(self, node: ast.Call) -> None:
         '''Dispatch a call
 
@@ -473,7 +499,8 @@ class _translate_to_sequence(ast.NodeVisitor):
         # Connect everything
         self._connect_vertices(node, level, return_type, transform_body, arg_vtx)
 
-    def _connect_vertices(self, node: ast.AST, level: int, return_type: type, func_body: ast.AST, vertices: List[Vertex]):
+    def _connect_vertices(self, node: ast.AST, level: int, return_type: type,
+                          func_body: ast.AST, vertices: List[Vertex], is_filter: bool = False):
         '''Given an expression that is connected with a number of nodes, form the connections. Constants are properly dealt with.
 
         The main sequence will be the first non-constant vertex given in `vertices.`
@@ -491,11 +518,12 @@ class _translate_to_sequence(ast.NodeVisitor):
                                 depending.
             func_body (ast.AST): The ast representing the function body. Put in an `expression_transform`
             vertices (List[Vertex]): List of dependent vertices. Edges will be marked.
+            is_filter (bool): Create a filter for this
 
         Returns:
             [type]: [description]
         '''
-        s = expression_transform(func_body)
+        s = expression_transform(func_body, is_filter=is_filter)
 
         # Go in order to find the first good vertex to give us a level
         # and main sequence.
@@ -550,7 +578,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         else:
             raise FuncADLTablesException(f'Do not know how to deal with a number of type {type(i)}')
 
-        v_i = v_info(0, expression_transform(node), Constant[t], {}, 0)  # type: ignore
+        v_i = v_info(0, expression_transform(node), Constant[t], {node: node}, 0)  # type: ignore
         self._g.add_vertex(info=v_i)
 
     def visit_Str(self, node: ast.Num):
@@ -567,7 +595,7 @@ class _translate_to_sequence(ast.NodeVisitor):
         Args:
             node (ast.Num): The number
         '''
-        v_i = v_info(0, expression_transform(node), Constant[str], {}, 0)  # type: ignore
+        v_i = v_info(0, expression_transform(node), Constant[str], {node: node}, 0)  # type: ignore
         self._g.add_vertex(info=v_i)
 
 

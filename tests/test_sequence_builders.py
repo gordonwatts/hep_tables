@@ -2,13 +2,13 @@ import ast
 
 from hep_tables.constant import Constant
 from hep_tables.util_ast import astIteratorPlaceholder
-from typing import Callable, Dict, Iterable, List, Optional, Type, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Type, Union
 
 import pytest
 from dataframe_expressions.asts import (ast_Callable, ast_DataFrame,
                                         ast_FunctionPlaceholder)
 from dataframe_expressions.data_frame import DataFrame
-from dataframe_expressions.render_dataframe import render_context
+from dataframe_expressions.render_dataframe import ast_Filter, render_context
 from igraph import Graph
 
 from hep_tables import xaod_table
@@ -120,6 +120,56 @@ def test_xaod_table_not_xaod_table(mocker):
         ast_to_graph(a, g, t_mock)
 
 
+def test_filter(mocker):
+    'Make sure filter works properly for simple case'
+    filter = ast.Name('a')
+    body = ast.Name('b')
+    op = ast_Filter(expr=body, filter=filter)
+
+    g = Graph(directed=True)
+    v1 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[bool], {filter: astIteratorPlaceholder(1)}))
+    v2 = g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {body: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = ((1, 1), (bool, float))
+
+    ast_to_graph(op, g, t_mock)
+
+    assert len(g.vs()) == 3
+    op_v = get_v_info(list(g.vs())[-1])
+
+    assert op_v.v_type == Iterable[float]
+    assert op_v.node is op
+    assert op_v.level == 1
+    assert MatchASTDict({op: astIteratorPlaceholder(1)}) == op_v.node_as_dict
+
+    seq = op_v.sequence
+    assert isinstance(seq, expression_transform)
+    assert seq.is_filter
+
+    t_mock.find_broadcast_level_for_args.assert_called_with((bool, Any), (Iterable[bool], Iterable[float],))
+    assert get_v_info(v2).order != get_v_info(v1).order
+
+
+def test_filter_bad_test(mocker):
+    'Make sure filter works properly for simple case'
+    filter = ast.Name('a')
+    body = ast.Name('b')
+    op = ast_Filter(expr=body, filter=filter)
+
+    g = Graph(directed=True)
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {filter: astIteratorPlaceholder(1)}))
+    g.add_vertex(info=v_info(1, mocker.MagicMock(spec=sequence_predicate_base), Iterable[float], {body: astIteratorPlaceholder(1)}))
+
+    t_mock = mocker.MagicMock(spec=type_inspector)
+    t_mock.find_broadcast_level_for_args.return_value = None
+
+    with pytest.raises(FuncADLTablesException) as e:
+        ast_to_graph(op, g, t_mock)
+
+    assert "bool" in str(e.value).lower()
+
+
 @pytest.mark.parametrize("a, c_type", [
                          (ast.Num(n=1), int),
                          (ast.Num(n=1.2), float),
@@ -137,6 +187,7 @@ def test_constant(mocker, a, c_type):
     v_info = get_v_info(v)
 
     assert v_info.v_type == Constant[c_type]  # type: ignore
+    assert v_info.node is a
 
 
 def test_attribute_known_list(mocker):

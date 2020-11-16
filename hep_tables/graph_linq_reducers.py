@@ -10,7 +10,7 @@ from hep_tables.graph_info import (
     copy_v_info, e_info, get_e_info, get_v_info, v_info)
 from hep_tables.transforms import expression_transform, expression_tuple, sequence_downlevel
 from hep_tables.util_ast import add_level_to_holder, astIteratorPlaceholder, clone_holders, set_holder_level_index
-from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, parent_iterator_indices, vertex_iterator_indices
+from hep_tables.util_graph import depth_first_traversal, find_main_seq_edge, highest_used_order, parent_iterator_indices, vertex_iterator_indices
 from hep_tables.utils import QueryVarTracker
 
 
@@ -21,6 +21,9 @@ def run_linear_reduction(g: Graph, qv: QueryVarTracker):
     Args:
         g (Graph): [description]
     '''
+    # Get rid of hanging nodes
+    remove_unconnected_nodes(g)
+
     # Fill in any gaps in the graph
     add_missing_steps(g)
 
@@ -76,21 +79,28 @@ def reduce_level(g: Graph, level: int, qv: QueryVarTracker):
         v['info'] = copy_v_info(vs_meta, new_sequence=new_seq, new_level=level - 1, new_node=new_node_dict)
 
 
-def partition_by_parents(vs: List[Vertex]) -> List[List[Vertex]]:
-    '''Given a list of vertices, partition them by identical parents.
+def _partition_by_parents(vs: List[Vertex]) -> List[List[Vertex]]:
+    '''Given a list of vertices, partition by their ability to be combined:
+
+        - Only nodes with a common parent can be combined into a group
+        - No node marked as a filter can be part of a group.
 
     Args:
-        vs (List[Vertex]): The list of vertices to sort into groups by parents
+        vs (List[Vertex]): The list of vertices to sort into groups
 
     Returns:
         List[List[Vertex]]: [description]
     '''
-    by_parents: Dict[List[Vertex], Any] = {v: tuple(set(p for p in v.neighbors(mode='out'))) for v in vs}
-    organized_vertices: Dict[Tuple[Vertex], List[Vertex]] = defaultdict(list)
+    by_parents: Dict[Vertex, Tuple[Vertex, ...]] = {v: tuple(set(p for p in v.neighbors(mode='out'))) for v in vs}
+    organized_vertices: Dict[Tuple[Vertex, ...], List[Vertex]] = defaultdict(list)
+    filter = []
     for k, v in by_parents.items():
-        organized_vertices[v].append(k)
+        if get_v_info(k).sequence.is_filter:
+            filter.append(k)
+        else:
+            organized_vertices[v].append(k)
 
-    return [v_list for v_list in organized_vertices.values()]
+    return [v_list for v_list in organized_vertices.values()] + filter
 
 
 def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
@@ -105,7 +115,7 @@ def reduce_tuple_vertices(g: Graph, level: int, qv: QueryVarTracker):
     vertices_to_delete = []
     for grouping in steps:
         level_group = [v for v in grouping if get_v_info(v).level == level]
-        for p_group in partition_by_parents(level_group):
+        for p_group in _partition_by_parents(level_group):
             if len(p_group) > 1:
                 # Check we have unique orders. Not strictly required in order
                 # do work, but it does assure repeatability, and that things are
@@ -202,6 +212,7 @@ def reduce_iterator_chaining(g: Graph, level: int, qt: QueryVarTracker):
                 else:
                     seq = expression_transform(seq.render_ast({}),
                                                skip_iterators=list(iterator_indices))
+                    # TODO: Make sure if seq is a filter that this is done right
 
             # Update vertex and edges
             new_v_info = copy_v_info(get_v_info(v), new_sequence=seq)
@@ -232,9 +243,13 @@ def add_missing_steps(g: Graph):
                     v_target_info = get_v_info(v_target)
                     old_e_info = get_e_info(e)
                     for _ in range((index - 1) - vertex_step[e.target_vertex]):
+                        highest_order = highest_used_order(v_target) + 1
+                        if v_target_info.order > highest_order:
+                            highest_order = v_target_info.order
                         new_info = copy_v_info(v_target_info,
                                                new_node={k: clone_holders().visit(val) for k, val in v_target_info.node_as_dict.items()},
-                                               new_sequence=expression_transform(v_target_info.node))
+                                               new_sequence=expression_transform(v_target_info.node),
+                                               new_order=highest_order)
                         new_v = g.add_vertex(info=new_info)
 
                         g.add_edge(new_v, v_target, info=old_e_info)
@@ -243,6 +258,17 @@ def add_missing_steps(g: Graph):
                     delete_edges.append(e)
             if len(delete_edges) > 0:
                 g.delete_edges(delete_edges)
+
+
+def remove_unconnected_nodes(g: Graph):
+    '''Remove any nodes in the graph that are not connected. At this point
+    they will be only constants.
+
+    Args:
+        g (Graph): The graph to operate on
+    '''
+    nodes = tuple(g.vs.select(lambda v: v.degree() == 0))
+    g.delete_vertices(nodes)
 
 
 def _find_edge(v1: Vertex, v2: Vertex) -> Optional[Edge]:

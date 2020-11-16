@@ -1,7 +1,7 @@
 from hep_tables.constant import Constant
 import inspect
 import logging
-from typing import Callable, Iterable, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Callable, Iterable, List, Optional, Set, Tuple, Type, Union
 
 
 def _is_method(a) -> bool:
@@ -152,7 +152,10 @@ class type_inspector:
             return None
 
         # Make sure there is a legal difference
-        non_const_levels_to_match = [lv[0] for lv in zip(levels_to_match, t_actual) if not Constant.isconstant(lv[1])]
+        def does_not_matter(item):
+            return Constant.isconstant(item)
+
+        non_const_levels_to_match = [lv[0] for lv in zip(levels_to_match, t_actual) if not does_not_matter(lv[1])]
         if len(non_const_levels_to_match) > 0:
             min_level = min(lv[0] for lv in non_const_levels_to_match)
             max_level = max(lv[0] for lv in non_const_levels_to_match)
@@ -256,6 +259,10 @@ class type_inspector:
             defined (Type): The first type of the two to compare
             actual (Type): The second type to compare
         '''
+        if (defined == Any and not self.iterable_object(actual)) \
+                or (actual == Any and not self.iterable_object(defined)):
+            return True
+
         d_set = self._possible_types(defined)
         a_set = self._possible_types(actual)
 
